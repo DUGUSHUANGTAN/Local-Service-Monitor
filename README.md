@@ -4,6 +4,12 @@ macOS 本地服务监控与管理工具：自动扫描正在监听的 TCP/UDP �
 
 A macOS-local service monitor: discovers listening TCP/UDP endpoints, identifies the owning processes and applications, classifies services by access scope, and manages them through a Neumorphism-styled local web UI.
 
+## 截图 Screenshots
+
+| 浅色 Light | 深色 Dark |
+| --- | --- |
+| ![Light theme](docs/images/dashboard-light.png) | ![Dark theme](docs/images/dashboard-dark.png) |
+
 ## 功能 Features
 
 - 真实扫描 macOS 监听端口（`lsof` + `psutil` + `ps` 组合，优雅降级）
