@@ -29,6 +29,7 @@ A macOS-local service monitor: discovers listening TCP/UDP endpoints, identifies
 要求：macOS（Apple Silicon 或 Intel），Python 3.9+（推荐 3.10+）。
 
 ```bash
+git clone https://github.com/DUGUSHUANGTAN/Local-Service-Monitor.git
 cd Local-Service-Monitor
 python3 -m pip install -r requirements.txt
 ```
@@ -50,7 +51,14 @@ python3 server.py
 环境变量：
 
 - `LSM_PORT`：指定端口（默认 8848）
-- `LSM_NO_BROWSER=1`：不自动打开浏览器
+- `LSM_NO_BROWSER=1`：不自动打开浏览器（服务器/无 GUI 环境建议设置此项）
+
+> 出于安全设计，服务**只监听回环地址**，不接受任何非本机直连。部署在远程服务器上时，通过 SSH 端口转发在本地访问即可：
+>
+> ```bash
+> ssh -N -L 8848:127.0.0.1:8848 user@your-server
+> # 然后在本地浏览器打开 http://127.0.0.1:8848
+> ```
 
 ## 权限说明 Permissions
 
