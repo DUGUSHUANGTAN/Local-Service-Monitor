@@ -1,0 +1,18 @@
+# runtime data (contains local machine info — never commit)
+config.json
+history.sqlite
+server.log
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# ZCode workspace config (local editor tooling, not project)
+.zcodeignore

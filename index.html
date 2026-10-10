@@ -1,0 +1,1509 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Local Service Monitor</title>
+<script>window.__LSM_CSRF__ = "__CSRF_TOKEN__";</script>
+<style>
+/* ============ Themes: independently designed, not inverted ============ */
+:root {
+  --radius: 16px;
+  --radius-sm: 12px;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --mono: "SF Mono", ui-monospace, Menlo, monospace;
+  --dur: 180ms;
+}
+html[data-theme="light"] {
+  --bg: #E8ECF1;
+  --surface: #E8ECF1;
+  --surface-2: #EDF0F4;
+  --text: #27313D;
+  --text-2: #687381;
+  --shadow-dark: rgba(163, 174, 188, 0.52);
+  --shadow-light: rgba(255, 255, 255, 0.85);
+  --raised: -5px -5px 11px var(--shadow-light), 5px 5px 11px var(--shadow-dark);
+  --raised-sm: -3px -3px 7px var(--shadow-light), 3px 3px 7px var(--shadow-dark);
+  --pressed: inset -3px -3px 6px var(--shadow-light), inset 3px 3px 6px var(--shadow-dark);
+  --inset: inset 2px 2px 5px var(--shadow-dark), inset -2px -2px 5px var(--shadow-light);
+  --accent: #3E7BFA;
+  --accent-soft: rgba(62, 123, 250, 0.14);
+  --ok: #2FA36B;
+  --warn: #D9A043;
+  --danger: #D9615F;
+  --line: rgba(39, 49, 61, 0.08);
+  --scrim: rgba(120, 130, 145, 0.35);
+}
+html[data-theme="dark"] {
+  --bg: #000000;
+  --surface: #17191D;
+  --surface-2: #202329;
+  --text: #E7E9ED;
+  --text-2: #9499A3;
+  --shadow-dark: rgba(0, 0, 0, 0.85);
+  --shadow-light: rgba(255, 255, 255, 0.045);
+  --raised: -4px -4px 10px var(--shadow-light), 5px 5px 12px var(--shadow-dark);
+  --raised-sm: -2px -2px 6px var(--shadow-light), 3px 3px 8px var(--shadow-dark);
+  --pressed: inset -2px -2px 5px var(--shadow-light), inset 3px 3px 7px var(--shadow-dark);
+  --inset: inset 2px 2px 6px var(--shadow-dark), inset -1px -1px 4px var(--shadow-light);
+  --accent: #5B8DEF;
+  --accent-soft: rgba(91, 141, 239, 0.16);
+  --ok: #3FBF85;
+  --warn: #E0B45C;
+  --danger: #F06565;
+  --line: rgba(231, 233, 237, 0.07);
+  --scrim: rgba(0, 0, 0, 0.65);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: var(--font); background: var(--bg); color: var(--text);
+  font-size: 13.5px; -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+button { font-family: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+input, select { font-family: inherit; color: inherit; }
+::selection { background: var(--accent-soft); }
+
+/* scrollbar */
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--shadow-dark); border-radius: 8px;
+  border: 2px solid var(--bg);
+}
+html[data-theme="dark"] *::-webkit-scrollbar-thumb { background: #2c3038; }
+
+/* ============ Layout ============ */
+.app { display: flex; height: 100vh; }
+.sidebar {
+  width: 224px; flex: 0 0 auto; padding: 18px 14px; display: flex; flex-direction: column;
+  gap: 6px; transition: width var(--dur); background: var(--bg);
+}
+.sidebar.collapsed { width: 76px; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 6px 8px 18px; }
+.brand .logo {
+  width: 38px; height: 38px; border-radius: 12px; flex: 0 0 auto;
+  display: grid; place-items: center; box-shadow: var(--raised-sm); background: var(--surface);
+  color: var(--accent);
+}
+.brand .bt { font-weight: 700; font-size: 13.5px; letter-spacing: .2px; white-space: nowrap; overflow: hidden; }
+.brand .bs { font-size: 10.5px; color: var(--text-2); white-space: nowrap; overflow: hidden; }
+.sidebar.collapsed .bt, .sidebar.collapsed .bs { display: none; }
+
+.nav-item {
+  display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-radius: var(--radius-sm);
+  color: var(--text-2); font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden;
+  transition: box-shadow var(--dur), color var(--dur), background var(--dur);
+  width: 100%; text-align: left;
+}
+.nav-item svg { flex: 0 0 17px; }
+.nav-item:hover { color: var(--text); }
+.nav-item.active {
+  color: var(--accent); background: var(--surface); box-shadow: var(--raised-sm); font-weight: 600;
+}
+.sidebar.collapsed .nav-item { justify-content: center; padding: 11px 0; }
+.sidebar.collapsed .nav-item .lbl { display: none; }
+.nav-badge {
+  margin-left: auto; font-size: 10.5px; font-weight: 600; color: var(--text-2);
+  background: var(--surface); border-radius: 9px; padding: 2px 7px; box-shadow: var(--inset);
+}
+.sidebar.collapsed .nav-badge { display: none; }
+.nav-sep { height: 1px; background: var(--line); margin: 10px 6px; }
+.sidebar-foot { margin-top: auto; display: flex; flex-direction: column; gap: 8px; }
+.foot-row { display: flex; gap: 8px; }
+.icon-btn {
+  width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center;
+  color: var(--text-2); background: var(--surface); box-shadow: var(--raised-sm);
+  transition: all var(--dur); flex: 0 0 auto;
+}
+.icon-btn:hover { color: var(--text); }
+a.icon-btn { text-decoration: none; color: var(--text-2); }
+a.icon-btn:hover { color: var(--text); }
+.icon-btn:active, .icon-btn.pressed { box-shadow: var(--pressed); }
+.icon-btn.on { color: var(--accent); }
+.sidebar.collapsed .foot-row { flex-direction: column; align-items: center; }
+
+.main { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; }
+.topbar {
+  display: flex; align-items: center; gap: 14px; padding: 16px 22px 10px;
+}
+.topbar h1 { font-size: 17px; font-weight: 700; letter-spacing: .2px; }
+.topbar .device { font-size: 11.5px; color: var(--text-2); display: flex; gap: 5px; align-items: center; margin-top: 2px;}
+.search-wrap {
+  margin-left: auto; display: flex; align-items: center; gap: 8px;
+  background: var(--surface); border-radius: 12px; padding: 0 12px; height: 38px; width: 240px;
+  box-shadow: var(--inset); color: var(--text-2);
+}
+.search-wrap input { border: 0; outline: 0; background: transparent; width: 100%; font-size: 12.5px; color: var(--text); }
+.scan-state { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--text-2); white-space: nowrap; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+.dot.scan { background: var(--accent); box-shadow: 0 0 6px var(--accent); animation: pulse 1s infinite; }
+.dot.off { background: var(--danger); box-shadow: 0 0 6px var(--danger); animation: none; }
+@keyframes pulse { 50% { opacity: .35; } }
+#offlineBanner {
+  display: none; margin: 0 22px; padding: 10px 14px; border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--danger); font-size: 12.5px; box-shadow: var(--raised-sm);
+  align-items: center; gap: 9px;
+}
+#offlineBanner.show { display: flex; }
+
+.content { flex: 1; overflow-y: auto; padding: 10px 22px 26px; }
+
+/* ============ Toolbar / filters ============ */
+.toolbar { display: flex; align-items: center; gap: 10px; padding: 6px 0 14px; flex-wrap: wrap; }
+.seg {
+  display: flex; background: var(--surface); border-radius: 12px; padding: 4px; box-shadow: var(--inset); gap: 2px;
+}
+.seg button {
+  padding: 6px 11px; border-radius: 9px; font-size: 12px; color: var(--text-2); display: flex; gap: 6px; align-items: center;
+  transition: all var(--dur);
+}
+.seg button.on { color: var(--accent); box-shadow: var(--raised-sm); font-weight: 600; }
+.select, .field input, .field select {
+  height: 36px; border-radius: 11px; border: 0; background: var(--surface); box-shadow: var(--inset);
+  padding: 0 12px; font-size: 12.5px; outline: none; color: var(--text); max-width: 200px;
+}
+.toolbar .spacer { flex: 1; }
+.count-hint { font-size: 12px; color: var(--text-2); }
+
+/* ============ Stat cards ============ */
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: 14px; padding-bottom: 20px; }
+.stat {
+  background: var(--surface); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--raised);
+  display: flex; flex-direction: column; gap: 6px; transition: transform var(--dur);
+}
+.stat .k { font-size: 11.5px; color: var(--text-2); display: flex; align-items: center; gap: 7px; }
+.stat .k svg { width: 14px; height: 14px; }
+.stat .v { font-size: 22px; font-weight: 700; letter-spacing: -.3px; }
+.stat .hint { font-size: 10.5px; color: var(--text-2); }
+
+/* ============ Service cards ============ */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(288px, 1fr)); gap: 16px; }
+.svc-card {
+  background: var(--surface); border-radius: var(--radius); padding: 14px; box-shadow: var(--raised);
+  display: flex; flex-direction: column; gap: 10px; transition: transform var(--dur), box-shadow var(--dur);
+  position: relative;
+}
+@keyframes rise { from { opacity: 0; transform: translateY(5px); } }
+.svc-card:hover { transform: translateY(-2px); }
+.svc-card.selected { box-shadow: var(--pressed); }
+.svc-card.menu-open { z-index: 50; }
+.sc-head { display: flex; align-items: center; gap: 10px; }
+.sc-icon {
+  width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center;
+  background: var(--surface-2); box-shadow: var(--inset); color: var(--accent); flex: 0 0 auto;
+}
+.sc-icon.cat-non-web { color: var(--ok); }
+.sc-icon.cat-unknown { color: var(--text-2); }
+.sc-icon.cat-internet-web { color: var(--warn); }
+.sc-title { min-width: 0; }
+.sc-title .n { font-weight: 650; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-title .a { font-size: 11px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-status { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-2); flex: 0 0 auto; }
+.sc-addr {
+  font-family: var(--mono); font-size: 11.5px; color: var(--text-2); background: var(--surface-2);
+  border-radius: 9px; padding: 7px 10px; box-shadow: var(--inset);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sc-addr b { color: var(--text); font-weight: 600; }
+.badges { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.tag {
+  font-size: 10.5px; font-weight: 600; color: var(--text-2); border-radius: 7px; padding: 3px 8px;
+  background: var(--surface-2); box-shadow: var(--raised-sm);
+}
+.tag.scope { color: var(--accent); }
+.tag.scope.wild { color: var(--warn); }
+.tag.conf-confirmed { color: var(--ok); }
+.tag.conf-high { color: var(--ok); }
+.tag.conf-low { color: var(--warn); }
+.tag.perm { color: var(--danger); }
+.sc-metrics { display: flex; gap: 16px; font-size: 11px; color: var(--text-2); align-items: center; }
+.sc-metrics svg { width: 13px; height: 13px; vertical-align: -2px; margin-right: 4px; }
+.sc-metrics .m b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.sc-actions { display: flex; gap: 7px; margin-top: 2px; }
+.sc-actions .icon-btn { width: 30px; height: 30px; border-radius: 9px; }
+.sc-actions .icon-btn svg { width: 14px; height: 14px; }
+.sc-actions .icon-btn[disabled] { opacity: .35; cursor: default; }
+.menu-wrap { position: relative; margin-left: auto; }
+.menu {
+  position: absolute; right: 0; top: 34px; z-index: 40; min-width: 178px;
+  background: var(--surface-2); border-radius: 12px; box-shadow: var(--raised); padding: 6px; display: none;
+}
+.menu.show { display: block; animation: rise 140ms ease-out; }
+.menu button { display: flex; width: 100%; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 8px; font-size: 12px; color: var(--text); text-align: left; }
+.menu button:hover { background: var(--accent-soft); }
+.menu button.danger { color: var(--danger); }
+.menu button[disabled] { opacity: .4; pointer-events: none; }
+.menu .sep { height: 1px; background: var(--line); margin: 5px 8px; }
+
+/* ============ Table / list view ============ */
+.tbl-wrap { background: var(--surface); border-radius: var(--radius); box-shadow: var(--raised); overflow: auto; max-height: calc(100vh - 240px); }
+table.svc { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 780px; }
+table.svc th {
+  position: sticky; top: 0; background: var(--surface); z-index: 2; text-align: left;
+  padding: 12px 14px; font-size: 11px; color: var(--text-2); font-weight: 600; letter-spacing: .3px;
+  border-bottom: 1px solid var(--line); cursor: pointer; user-select: none; white-space: nowrap;
+}
+table.svc th .arw { opacity: .4; font-size: 9px; }
+table.svc th.sorted .arw { opacity: 1; color: var(--accent); }
+table.svc td { padding: 11px 14px; border-bottom: 1px solid var(--line); white-space: nowrap; vertical-align: middle; }
+table.svc tr:last-child td { border-bottom: 0; }
+table.svc tbody tr { cursor: pointer; transition: background var(--dur); }
+table.svc tbody tr:hover { background: var(--accent-soft); }
+table.svc tbody tr.selected { background: var(--accent-soft); box-shadow: var(--inset); }
+table.svc .mono { font-family: var(--mono); font-size: 11.5px; color: var(--text-2); }
+.tname { display: flex; align-items: center; gap: 9px; font-weight: 600; }
+.tname .ticon { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; background: var(--surface-2); box-shadow: var(--inset); flex: 0 0 auto; }
+.tname .ticon svg { width: 14px; height: 14px; color: var(--accent); }
+.num { font-variant-numeric: tabular-nums; }
+
+/* ============ Empty ============ */
+.empty {
+  display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 64px 20px; color: var(--text-2);
+}
+.empty .eicon { width: 62px; height: 62px; border-radius: 20px; display: grid; place-items: center; box-shadow: var(--inset); background: var(--surface); }
+.empty .eicon svg { width: 26px; height: 26px; }
+.empty .et { font-size: 13.5px; font-weight: 600; color: var(--text); }
+
+/* ============ Detail panel ============ */
+.scrim {
+  position: fixed; inset: 0; background: var(--scrim); opacity: 0; pointer-events: none; transition: opacity var(--dur); z-index: 60;
+  backdrop-filter: blur(1.5px);
+}
+.scrim.show { opacity: 1; pointer-events: auto; }
+.detail {
+  position: fixed; top: 0; right: 0; bottom: 0; width: 440px; max-width: 94vw; z-index: 70;
+  background: var(--bg); box-shadow: -12px 0 30px var(--shadow-dark);
+  transform: translateX(102%); transition: transform 220ms cubic-bezier(.2,.7,.3,1);
+  display: flex; flex-direction: column;
+}
+.detail.show { transform: none; }
+.d-head { padding: 18px 20px 14px; display: flex; gap: 12px; align-items: flex-start; border-bottom: 1px solid var(--line); }
+.d-head .sc-icon { width: 44px; height: 44px; }
+.d-head h2 { font-size: 15.5px; }
+.d-head .sub { font-size: 11.5px; color: var(--text-2); margin-top: 3px; }
+.d-close { margin-left: auto; }
+.d-body { overflow-y: auto; padding: 6px 20px 24px; flex: 1; }
+.d-sec { padding: 14px 0; border-bottom: 1px solid var(--line); }
+.d-sec:last-child { border-bottom: 0; }
+.d-sec h3 { font-size: 11px; letter-spacing: .6px; text-transform: uppercase; color: var(--text-2); margin-bottom: 10px; }
+.kv { display: grid; grid-template-columns: 108px 1fr; gap: 5px 12px; font-size: 12px; }
+.kv .k { color: var(--text-2); }
+.kv .v { font-family: var(--mono); font-size: 11.5px; word-break: break-all; }
+.kv .v.plain { font-family: var(--font); font-size: 12px; }
+.ep-row {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px;
+  background: var(--surface-2); box-shadow: var(--inset); margin-bottom: 7px; font-size: 11.5px; font-family: var(--mono);
+}
+.ep-row .scope-p { margin-left: auto; font-family: var(--font); }
+.basis-item { font-size: 11.5px; color: var(--text-2); padding: 5px 0; display: flex; gap: 8px; }
+.basis-item svg { width: 13px; height: 13px; flex: 0 0 auto; margin-top: 1px; color: var(--accent); }
+.charts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.chart { background: var(--surface-2); border-radius: 12px; padding: 10px; box-shadow: var(--inset); }
+.chart .ct { font-size: 10.5px; color: var(--text-2); margin-bottom: 6px; display: flex; justify-content: space-between; }
+.chart .ct b { color: var(--text); font-variant-numeric: tabular-nums; }
+.chart svg { width: 100%; height: 56px; display: block; }
+.d-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn {
+  height: 34px; padding: 0 14px; border-radius: 11px; font-size: 12px; font-weight: 600;
+  background: var(--surface); box-shadow: var(--raised-sm); color: var(--text);
+  display: inline-flex; align-items: center; gap: 7px; transition: all var(--dur);
+}
+.btn:hover { color: var(--accent); }
+.btn:active { box-shadow: var(--pressed); }
+.btn svg { width: 13px; height: 13px; }
+.btn.primary { background: var(--accent); color: #fff; box-shadow: var(--raised-sm); }
+.btn.primary:hover { color: #fff; filter: brightness(1.05); }
+.btn.danger { color: var(--danger); }
+.btn.danger:hover { color: var(--danger); background: var(--surface); }
+.btn[disabled] { opacity: .45; pointer-events: none; }
+
+/* ============ Modal ============ */
+.modal {
+  position: fixed; inset: 0; z-index: 80; display: none; place-items: center; padding: 20px;
+}
+.modal.show { display: grid; }
+.modal .box {
+  width: 400px; max-width: 100%; background: var(--bg); border-radius: 20px; box-shadow: var(--raised), 0 20px 50px var(--shadow-dark);
+  padding: 22px; animation: rise 160ms ease-out;
+}
+.modal h3 { font-size: 15px; margin-bottom: 8px; }
+.modal .mwarn { font-size: 12.5px; color: var(--text-2); line-height: 1.55; }
+.modal .mpid { margin: 12px 0; padding: 11px 13px; border-radius: 12px; background: var(--surface); box-shadow: var(--inset); font-family: var(--mono); font-size: 12px; }
+.modal .mrow { display: flex; gap: 9px; justify-content: flex-end; margin-top: 16px; }
+.modal .rel { margin-top: 8px; font-size: 11.5px; color: var(--warn); }
+
+/* ============ Toast ============ */
+.toast {
+  position: fixed; bottom: 26px; left: 50%; transform: translate(-50%, 20px); z-index: 90;
+  background: var(--surface); box-shadow: var(--raised); border-radius: 13px; padding: 11px 18px;
+  font-size: 12.5px; display: flex; gap: 9px; align-items: center; opacity: 0; pointer-events: none;
+  transition: all 200ms ease;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+.toast svg { width: 15px; height: 15px; color: var(--ok); }
+.toast.err svg { color: var(--danger); }
+
+/* ============ History ============ */
+.hist-filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; padding-bottom: 14px; }
+table.hist { width: 100%; border-collapse: collapse; font-size: 12px; }
+table.hist th { text-align: left; padding: 10px 12px; color: var(--text-2); font-size: 11px; border-bottom: 1px solid var(--line); }
+table.hist td { padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.hist .time { font-family: var(--mono); font-size: 11px; color: var(--text-2); white-space: nowrap; }
+.ev { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 11px; border-radius: 7px; padding: 3px 8px; background: var(--surface-2); box-shadow: var(--raised-sm); white-space: nowrap;}
+.ev.appeared, .ev.first_seen { color: var(--ok); }
+.ev.disappeared, .ev.stopped { color: var(--danger); }
+.ev.endpoint_change, .ev.classification_change { color: var(--warn); }
+.detail-cell { font-family: var(--mono); font-size: 10.5px; color: var(--text-2); word-break: break-all; max-width: 340px; }
+
+/* ============ Settings ============ */
+.settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 18px; align-items: start; }
+.set-group { background: var(--surface); border-radius: var(--radius); box-shadow: var(--raised); padding: 18px; }
+.set-group h3 { font-size: 12.5px; font-weight: 700; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+.set-group h3 svg { width: 15px; height: 15px; color: var(--accent); }
+.field { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.field:last-child { border-bottom: 0; }
+.field .fl { font-size: 12.5px; }
+.field .fhint { font-size: 10.5px; color: var(--text-2); margin-top: 2px; max-width: 340px; }
+.field .fh { font-size: 10.5px; color: var(--text-2); margin-top: 2px; }
+.switch {
+  width: 46px; height: 26px; border-radius: 14px; background: var(--surface-2); box-shadow: var(--inset);
+  position: relative; flex: 0 0 auto; transition: all var(--dur);
+}
+.switch::after {
+  content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%;
+  background: var(--surface); box-shadow: var(--raised-sm); transition: all var(--dur);
+}
+.switch.on { background: var(--accent); box-shadow: var(--inset); }
+.switch.on::after { left: 23px; }
+.set-note { font-size: 11px; color: var(--text-2); line-height: 1.6; padding: 10px 12px; border-radius: 11px; background: var(--surface-2); box-shadow: var(--inset); }
+.errlog { font-family: var(--mono); font-size: 10.5px; color: var(--text-2); background: var(--surface-2); box-shadow: var(--inset); border-radius: 11px; padding: 10px; max-height: 180px; overflow-y: auto; white-space: pre-wrap; }
+
+/* tooltip */
+[data-tip] { position: relative; }
+[data-tip]:hover::after {
+  content: attr(data-tip); position: absolute; bottom: calc(100% + 7px); left: 50%; transform: translateX(-50%);
+  background: var(--surface-2); color: var(--text); box-shadow: var(--raised-sm); font-size: 10.5px; font-weight: 500;
+  padding: 4px 9px; border-radius: 7px; white-space: nowrap; z-index: 50; pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+@media (max-width: 860px) {
+  .sidebar { position: fixed; z-index: 55; height: 100vh; transform: translateX(-102%); transition: transform var(--dur); }
+  .sidebar.open-mobile { transform: none; }
+  .detail { width: 100vw; }
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="i-dashboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></symbol>
+<symbol id="i-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="4.5" cy="6" r="1.3" fill="currentColor" stroke="none"/><circle cx="4.5" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="4.5" cy="18" r="1.3" fill="currentColor" stroke="none"/></symbol>
+<symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><line x1="3" y1="12" x2="21" y2="12"/></symbol>
+<symbol id="i-lan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="6" r="2.6"/><circle cx="5" cy="18" r="2.6"/><circle cx="19" cy="18" r="2.6"/><path d="M10.8 8.3 6.3 15.8M13.2 8.3l4.5 7.5"/></symbol>
+<symbol id="i-local" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="4" width="16" height="11" rx="2"/><line x1="9" y1="19" x2="15" y2="19"/><line x1="12" y1="15" x2="12" y2="19"/></symbol>
+<symbol id="i-nonweb" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><ellipse cx="12" cy="6" rx="7.5" ry="3"/><path d="M4.5 6v12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3V6"/><path d="M4.5 12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3"/></symbol>
+<symbol id="i-unknown" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M9.4 9.3a2.8 2.8 0 1 1 3.9 3c-.9.5-1.3 1-1.3 2"/><circle cx="12" cy="17.3" r=".6" fill="currentColor"/></symbol>
+<symbol id="i-history" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/><path d="M3.5 3.5v4h4"/><path d="M12 7.5V12l3 2"/></symbol>
+<symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><circle cx="10" cy="7" r="2.2"/><line x1="4" y1="17" x2="20" y2="17"/><circle cx="15" cy="17" r="2.2"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="15.5" y1="15.5" x2="21" y2="21"/></symbol>
+<symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 11a8 8 0 1 0-2.3 6.4"/><path d="M20 4v7h-7"/></symbol>
+<symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M5 15H4.5A1.5 1.5 0 0 1 3 13.5V4.5A1.5 1.5 0 0 1 4.5 3h9A1.5 1.5 0 0 1 15 4.5V5"/></symbol>
+<symbol id="i-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M7 17 17 7"/><path d="M9 7h8v8"/></symbol>
+<symbol id="i-power" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3v8"/><path d="M6.3 6.5a8 8 0 1 0 11.4 0"/></symbol>
+<symbol id="i-detail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="10.5" x2="12" y2="16.5"/><circle cx="12" cy="7.6" r=".7" fill="currentColor"/></symbol>
+<symbol id="i-more" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="5.5" cy="12" r=".4"/><circle cx="12" cy="12" r=".4"/><circle cx="18.5" cy="12" r=".4"/></symbol>
+<symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></symbol>
+<symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><line x1="12" y1="2.5" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="21.5"/><line x1="2.5" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="21.5" y2="12"/><line x1="5.2" y1="5.2" x2="7" y2="7"/><line x1="17" y1="17" x2="18.8" y2="18.8"/><line x1="5.2" y1="18.8" x2="7" y2="17"/><line x1="17" y1="7" x2="18.8" y2="5.2"/></symbol>
+<symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z"/></symbol>
+<symbol id="i-lang" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><line x1="3.5" y1="9" x2="20.5" y2="9"/><line x1="3.5" y1="15" x2="20.5" y2="15"/><path d="M12 3a14 14 0 0 0 0 18"/></symbol>
+<symbol id="i-github" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.55 0-.27-.01-1.17-.02-2.12-3.2.7-3.88-1.36-3.88-1.36-.52-1.33-1.28-1.68-1.28-1.68-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11.1 11.1 0 0 1 5.79 0c2.21-1.49 3.18-1.18 3.18-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.69 5.4-5.25 5.67.41.36.78 1.06.78 2.14 0 1.55-.01 2.79-.01 3.17 0 .31.21.67.8.55A10.52 10.52 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z"/></symbol>
+<symbol id="i-collapse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="10" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/><path d="M7 9.5 4 12l3 2.5"/></symbol>
+<symbol id="i-cpu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="7" y="7" width="10" height="10" rx="2"/><rect x="10" y="10" width="4" height="4" rx="1"/><line x1="9" y1="3.5" x2="9" y2="5.5"/><line x1="12" y1="3.5" x2="12" y2="5.5"/><line x1="15" y1="3.5" x2="15" y2="5.5"/><line x1="9" y1="18.5" x2="9" y2="20.5"/><line x1="12" y1="18.5" x2="12" y2="20.5"/><line x1="15" y1="18.5" x2="15" y2="20.5"/><line x1="3.5" y1="9" x2="5.5" y2="9"/><line x1="3.5" y1="12" x2="5.5" y2="12"/><line x1="3.5" y1="15" x2="5.5" y2="15"/><line x1="18.5" y1="9" x2="20.5" y2="9"/><line x1="18.5" y1="12" x2="20.5" y2="12"/><line x1="18.5" y1="15" x2="20.5" y2="15"/></symbol>
+<symbol id="i-mem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="3" y="7" width="18" height="10" rx="2"/><line x1="7" y1="17" x2="7" y2="20"/><line x1="12" y1="17" x2="12" y2="20"/><line x1="17" y1="17" x2="17" y2="20"/><line x1="7" y1="10.5" x2="7" y2="13.5"/><line x1="10.5" y1="10.5" x2="10.5" y2="13.5"/><line x1="14" y1="10.5" x2="14" y2="13.5"/></symbol>
+<symbol id="i-card" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="3.5" width="7.5" height="7.5" rx="1.5"/><rect x="13" y="3.5" width="7.5" height="7.5" rx="1.5"/><rect x="3.5" y="13" width="7.5" height="7.5" rx="1.5"/><rect x="13" y="13" width="7.5" height="7.5" rx="1.5"/></symbol>
+<symbol id="i-rows" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3.5" y="4.5" width="17" height="5" rx="1.5"/><rect x="3.5" y="14.5" width="17" height="5" rx="1.5"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5 9.5 18 20 6"/></symbol>
+<symbol id="i-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3.5 22 20H2Z"/><line x1="12" y1="10" x2="12" y2="14.5"/><circle cx="12" cy="17.3" r=".7" fill="currentColor"/></symbol>
+<symbol id="i-probe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="6"/><line x1="15.5" y1="15.5" x2="21" y2="21"/><circle cx="11" cy="11" r="1.6"/></symbol>
+<symbol id="i-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 3h8l4 4v14H6Z"/><path d="M14 3v4h4"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="15" y2="16"/></symbol>
+<symbol id="i-term" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M7 9l3.5 3L7 15"/><line x1="12" y1="15" x2="16" y2="15"/></symbol>
+<symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3 5 6v5c0 5 3.2 8.3 7 10 3.8-1.7 7-5 7-10V6Z"/><path d="M9.3 12l2 2 3.6-4" stroke-linecap="round"/></symbol>
+<symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16"/><path d="M6 7l1 13h10l1-13"/><path d="M9.5 7V4.5h5V7"/><line x1="10.5" y1="11" x2="10.5" y2="16"/><line x1="13.5" y1="11" x2="13.5" y2="16"/></symbol>
+</defs></svg>
+
+<div class="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <div class="logo"><svg width="19" height="19"><use href="#i-shield"/></svg></div>
+      <div><div class="bt">Local Service Monitor</div><div class="bs" id="brandSub"></div></div>
+    </div>
+    <nav id="nav"></nav>
+    <div class="sidebar-foot">
+      <div class="nav-sep"></div>
+      <div class="foot-row">
+        <button class="icon-btn" id="btnLang" data-tip="Language"><svg width="17" height="17"><use href="#i-lang"/></svg></button>
+        <button class="icon-btn" id="btnTheme" data-tip="Theme"><svg width="17" height="17"><use href="#i-moon"/></svg></button>
+        <a class="icon-btn" id="btnGithub" href="https://github.com/DUGUSHUANGTAN" target="_blank" rel="noopener noreferrer" data-tip="GitHub"><svg width="17" height="17"><use href="#i-github"/></svg></a>
+        <button class="icon-btn" id="btnCollapse" style="margin-left:auto" data-tip="Collapse"><svg width="17" height="17"><use href="#i-collapse"/></svg></button>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <h1 id="pageTitle"></h1>
+        <div class="device"><svg width="12" height="12" style="vertical-align:-2px"><use href="#i-local"/></svg> <span id="deviceName"></span></div>
+      </div>
+      <div class="search-wrap">
+        <svg width="15" height="15"><use href="#i-search"/></svg>
+        <input id="searchInput" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="scan-state"><span class="dot" id="scanDot"></span><span id="scanText"></span></div>
+      <button class="icon-btn" id="btnRefresh" data-tip="Refresh"><svg width="16" height="16"><use href="#i-refresh"/></svg></button>
+    </div>
+    <div id="offlineBanner"><svg width="15" height="15"><use href="#i-warn"/></svg><span id="offlineText"></span></div>
+    <div class="content" id="content"></div>
+  </main>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<aside class="detail" id="detail" aria-hidden="true"></aside>
+
+<div class="modal" id="stopModal">
+  <div class="box">
+    <h3 id="stopTitle"></h3>
+    <div class="mwarn" id="stopMsg"></div>
+    <div class="mpid" id="stopProc"></div>
+    <div class="rel" id="stopRel"></div>
+    <div class="mrow">
+      <button class="btn" id="stopCancel"></button>
+      <button class="btn danger" id="stopConfirm"></button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="clearModal">
+  <div class="box">
+    <h3 id="clearTitle"></h3>
+    <div class="mwarn" id="clearMsg"></div>
+    <div class="mrow">
+      <button class="btn" id="clearCancel"></button>
+      <button class="btn danger" id="clearConfirm"></button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"><svg><use href="#i-check"/></svg><span id="toastMsg"></span></div>
+
+<script>
+"use strict";
+/* ================= State ================= */
+const CSRF = /^[0-9a-f]{16,}$/.test(window.__LSM_CSRF__ || "") ? window.__LSM_CSRF__ : "";
+const LS = "lsm.prefs.v1";
+const DEF_PREFS = {
+  lang: (navigator.language || "en").toLowerCase().startsWith("zh") ? "zh" : "en",
+  theme: matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light",
+  navCollapsed: false, view: "card", sortKey: "name", sortDir: 1,
+  refreshInterval: 5, tagFilter: "", page: "dashboard"
+};
+let prefs = Object.assign({}, DEF_PREFS);
+try { Object.assign(prefs, JSON.parse(localStorage.getItem(LS) || "{}")); } catch (e) {}
+/* the old standalone "全部服务 / All Services" page merged into the dashboard */
+if (prefs.page === "all") prefs.page = "dashboard";
+function savePrefs() { try { localStorage.setItem(LS, JSON.stringify(prefs)); } catch (e) {} }
+
+let services = [], status = null, online = true;
+let selectedId = null, search = "", refreshTimer = null, detailTimer = null, detailSig = "";
+let historyData = [], histFilter = { days: 0, type: "", q: "" };
+let settingsCache = null;
+const serverSettingKeys = ["tcp_enabled","udp_enabled","ipv4_enabled","ipv6_enabled",
+  "auto_prober","gentle_gui_probing","probe_timeout_ms","probe_max_workers","show_unknown","show_system",
+  "aggregate_by","history_retention_days","public_verify_enabled","public_verify_url"];
+
+/* ================= i18n ================= */
+const I18N = {
+  zh: {
+    "sub.monitoring": "本机服务监控",
+    "nav.dashboard": "总览", "nav.internet": "互联网服务",
+    "nav.lan": "局域网服务", "nav.local": "本机服务", "nav.nonweb": "非 Web 服务",
+    "nav.unknown": "未知服务", "nav.history": "历史记录", "nav.settings": "设置",
+    "page.dashboard": "总览", "page.internet": "互联网服务",
+    "page.lan": "局域网服务", "page.local": "本机服务", "page.nonweb": "非 Web 服务",
+    "page.unknown": "未知服务", "page.history": "历史记录", "page.settings": "设置",
+    "search.ph": "搜索服务、端口、PID、协议…",
+    "scan.idle": "空闲", "scan.running": "扫描中…", "scan.last": "最近扫描", "scan.never": "尚未扫描",
+    "scan.ms": "耗时", "offline": "无法连接后端服务，请确认 server.py 正在运行。将每 3 秒自动重试。",
+    "stat.services": "当前服务", "stat.ports": "监听端口", "stat.internet": "互联网 Web",
+    "stat.lan": "局域网 Web", "stat.local": "本机 Web", "stat.nonweb": "非 Web 服务", "stat.unknown": "未知服务",
+    "stat.hint.services": "按进程聚合", "stat.hint.ports": "TCP + UDP 端点",
+    "view.card": "卡片", "view.list": "列表", "filter.tag": "全部标签",
+    "sort.name": "名称", "sort.port": "端口", "sort.cpu": "CPU", "sort.mem": "内存", "sort.started": "启动时间",
+    "sortlabel": "排序", "count.services": "个服务",
+    "open": "打开", "copy": "复制", "detail": "详情", "more": "更多",
+    "act.reprobe": "重新探测", "act.stop": "停止进程", "act.viewhistory": "查看历史",
+    "st.running": "运行中", "st.probing": "探测中", "st.denied": "权限不足", "st.gone": "已退出",
+    "unknown.svc": "未知服务", "unknown.app": "未知应用",
+    "conf.confirmed": "已确认", "conf.high": "高可信推断", "conf.low": "低可信推断", "conf.unknown": "未知",
+    "scope.loopback": "本机", "scope.wildcard": "全部接口", "scope.lan": "局域网", "scope.public_condition": "公网待验证", "scope.public_verified": "公网已验证",
+    "perm.denied": "权限不足，部分进程信息不可见", "perm.gone": "进程已退出", "perm.unavailable": "psutil 不可用，信息受限",
+    "d.basic": "基础信息", "d.network": "网络信息", "d.resource": "资源信息", "d.ident": "智能识别", "d.actions": "操作",
+    "f.proc_name": "进程名称", "f.app_name": "应用程序", "f.service_name": "服务名称", "f.pid": "PID", "f.ppid": "父进程",
+    "f.exe": "可执行文件", "f.cmd": "启动命令", "f.started": "进程启动时间", "f.first_seen": "首次发现时间",
+    "f.last_seen": "最近检测时间", "f.status": "当前状态", "f.user": "运行用户", "f.runtime": "运行时长",
+    "f.listen": "监听端点", "f.protocol": "应用层协议", "f.url": "可访问地址", "f.scope": "访问范围",
+    "f.connectivity": "连通性", "f.reachable": "可达", "f.unreachable": "不可达", "f.probed": "已探测", "f.not_probed": "未探测",
+    "f.type": "服务类型", "f.tags": "标签", "f.confidence": "置信度", "f.basis": "识别依据",
+    "basis.rule": "进程/命令匹配规则", "basis.probe": "协议探测", "basis.passive": "被动探测:已建立连接并读取,未发送任何请求字节",
+    "act.copy_url": "复制 URL", "act.copy_ip": "复制 IP", "act.copy_port": "复制端口", "act.copy_pid": "复制 PID",
+    "act.copy_path": "复制进程路径", "act.copy_cmd": "复制启动命令",
+    "cpu": "CPU", "mem": "内存", "cpu_hist": "CPU 历史", "mem_hist": "内存历史", "no_data": "暂无数据",
+    "stop.title": "停止进程", "stop.msg": "该操作会向进程发送终止信号（SIGTERM）。进程可能不会立即退出，请确认后继续。",
+    "stop.proc": "进程", "stop.rel": "关联端点：", "stop.confirm": "停止", "cancel": "取消",
+    "stop.self": "不能停止监控器自身", "stop.denied": "权限不足，无法停止该进程", "stop.mismatch": "进程身份已变化（PID 复用），操作已取消",
+    "stop.protected": "该系统进程受保护，禁止停止", "stop.notfound": "进程不存在或已退出",
+    "stop.ok": "已发送终止信号", "copy.ok": "已复制", "copy.fail": "复制失败",
+    "open.notweb": "非 Web 服务无法直接打开",
+    "hist.ev.first_seen": "首次发现", "hist.ev.appeared": "服务出现", "hist.ev.disappeared": "服务消失",
+    "hist.ev.endpoint_change": "监听变化", "hist.ev.classification_change": "识别变化", "hist.ev.stopped": "手动停止",
+    "hist.time": "时间", "hist.event": "事件", "hist.service": "服务", "hist.port": "端口", "hist.detail": "详情",
+    "hist.filter.days": "全部时间", "hist.filter.d1": "今天", "hist.filter.d7": "近 7 天", "hist.filter.d30": "近 30 天",
+    "hist.clear": "清空历史", "hist.clear.confirm": "清空全部历史记录？此操作不可恢复。",
+    "hist.filter.service": "按服务名搜索…", "hist.empty": "暂无历史记录",
+    "hist.sqlite_bad": "SQLite 历史存储不可用",
+    "set.general": "常规", "set.scan": "扫描", "set.class": "分类", "set.hist": "历史", "set.adv": "高级",
+    "set.language": "语言", "set.theme": "主题", "set.defaultview": "默认视图", "set.refresh": "自动刷新频率",
+    "set.refresh.off": "关闭", "set.theme.light": "浅色", "set.theme.dark": "深色", "set.view.card": "卡片", "set.view.list": "列表",
+    "set.tcp": "TCP 扫描", "set.udp": "UDP 扫描", "set.ipv4": "IPv4", "set.ipv6": "IPv6",
+    "set.autop": "自动协议识别", "set.gentle": "GUI 应用温和探测", "set.gentle.hint": "对位于 .app 应用包内的图形程序，自动探测只建立连接并读取首包，不发送任何请求字节，避免触发应用弹窗；关闭后改用完整探测。手动“重新探测”始终完整执行", "set.probe_to": "探测超时（毫秒）", "set.probe_workers": "探测并发上限",
+    "set.show_unknown": "显示未知服务", "set.show_system": "显示系统服务",
+    "set.agg": "服务聚合策略", "set.agg.process": "按进程聚合", "set.agg.endpoint": "按监听端点",
+    "set.show_conf": "显示识别置信度",
+    "set.retention": "历史保留天数",
+    "set.backend": "后端版本", "set.python": "Python 版本", "set.perms": "扫描权限状态",
+    "set.perms.ok": "正常（当前用户权限）", "set.perms.partial": "部分受限（存在无权限进程）", "set.perms.none": "psutil 不可用，依赖 lsof",
+    "set.errors": "错误日志", "set.noerrors": "无错误", "set.public": "公网验证", "set.public.on": "启用外部验证探测",
+    "set.public.url": "外部验证地址", "set.public.status": "验证状态", "set.security": "安全说明",
+    "set.security.hint": "管理 API 仅监听 127.0.0.1；所有写操作需 CSRF 令牌与同源校验；命令展示已脱敏；停止进程需确认并校验身份；本地数据从不外发。",
+    "set.saved": "设置已保存并生效", "set.apply": "应用",
+    "empty.svc": "没有符合条件的监听服务", "empty.svc.hint": "调整筛选或稍后自动刷新",
+    "empty.hist": "暂无历史记录", "chart.max": "峰值",
+    "relaunch": "重试连接",
+  },
+  en: {
+    "sub.monitoring": "Local service monitoring",
+    "nav.dashboard": "Dashboard", "nav.internet": "Internet",
+    "nav.lan": "LAN", "nav.local": "Local", "nav.nonweb": "Non-Web",
+    "nav.unknown": "Unknown", "nav.history": "History", "nav.settings": "Settings",
+    "page.dashboard": "Dashboard", "page.internet": "Internet Services",
+    "page.lan": "LAN Services", "page.local": "Local Services", "page.nonweb": "Non-Web Services",
+    "page.unknown": "Unknown Services", "page.history": "History", "page.settings": "Settings",
+    "search.ph": "Search service, port, PID, protocol…",
+    "scan.idle": "Idle", "scan.running": "Scanning…", "scan.last": "Last scan", "scan.never": "Not scanned yet",
+    "scan.ms": "in", "offline": "Backend unreachable. Make sure server.py is running. Retrying every 3 s.",
+    "stat.services": "Services", "stat.ports": "Listening ports", "stat.internet": "Internet Web",
+    "stat.lan": "LAN Web", "stat.local": "Local Web", "stat.nonweb": "Non-Web", "stat.unknown": "Unknown",
+    "stat.hint.services": "aggregated by process", "stat.hint.ports": "TCP + UDP endpoints",
+    "view.card": "Cards", "view.list": "List", "filter.tag": "All tags",
+    "sort.name": "Name", "sort.port": "Port", "sort.cpu": "CPU", "sort.mem": "Memory", "sort.started": "Started",
+    "sortlabel": "Sort", "count.services": "services",
+    "open": "Open", "copy": "Copy", "detail": "Details", "more": "More",
+    "act.reprobe": "Re-probe", "act.stop": "Stop process", "act.viewhistory": "View history",
+    "st.running": "Running", "st.probing": "Probing", "st.denied": "No permission", "st.gone": "Exited",
+    "unknown.svc": "Unknown service", "unknown.app": "Unknown app",
+    "conf.confirmed": "Confirmed", "conf.high": "High confidence", "conf.low": "Low confidence", "conf.unknown": "Unknown",
+    "scope.loopback": "Local", "scope.wildcard": "All interfaces", "scope.lan": "LAN", "scope.public_condition": "Public unverified", "scope.public_verified": "Public verified",
+    "perm.denied": "Insufficient permission — some process fields hidden", "perm.gone": "Process exited", "perm.unavailable": "psutil unavailable; limited info",
+    "d.basic": "Basic", "d.network": "Network", "d.resource": "Resources", "d.ident": "Identification", "d.actions": "Actions",
+    "f.proc_name": "Process", "f.app_name": "Application", "f.service_name": "Service", "f.pid": "PID", "f.ppid": "Parent PID",
+    "f.exe": "Executable", "f.cmd": "Command line", "f.started": "Process started", "f.first_seen": "First seen",
+    "f.last_seen": "Last detected", "f.status": "Status", "f.user": "User", "f.runtime": "Uptime",
+    "f.listen": "Endpoints", "f.protocol": "App-layer protocol", "f.url": "Reachable URL", "f.scope": "Access scope",
+    "f.connectivity": "Connectivity", "f.reachable": "Reachable", "f.unreachable": "Unreachable", "f.probed": "Probed", "f.not_probed": "Not probed",
+    "f.type": "Service type", "f.tags": "Tags", "f.confidence": "Confidence", "f.basis": "Evidence",
+    "basis.rule": "Process/command rule match", "basis.probe": "Protocol probe", "basis.passive": "Passive probe: connected and read, zero request bytes sent",
+    "act.copy_url": "Copy URL", "act.copy_ip": "Copy IP", "act.copy_port": "Copy port", "act.copy_pid": "Copy PID",
+    "act.copy_path": "Copy path", "act.copy_cmd": "Copy command",
+    "cpu": "CPU", "mem": "Memory", "cpu_hist": "CPU history", "mem_hist": "Memory history", "no_data": "No data",
+    "stop.title": "Stop process", "stop.msg": "This sends SIGTERM to the process. It may not exit immediately. Confirm to continue.",
+    "stop.proc": "Process", "stop.rel": "Bound endpoints: ", "stop.confirm": "Stop", "cancel": "Cancel",
+    "stop.self": "Cannot stop the monitor itself", "stop.denied": "Permission denied; cannot stop this process", "stop.mismatch": "Process identity changed (PID reuse); cancelled",
+    "stop.protected": "Protected system process; refusing to stop", "stop.notfound": "Process not found or already exited",
+    "stop.ok": "Termination signal sent", "copy.ok": "Copied", "copy.fail": "Copy failed",
+    "open.notweb": "Non-web service cannot be opened directly",
+    "hist.ev.first_seen": "First seen", "hist.ev.appeared": "Appeared", "hist.ev.disappeared": "Disappeared",
+    "hist.ev.endpoint_change": "Endpoint change", "hist.ev.classification_change": "Reclassified", "hist.ev.stopped": "Stopped",
+    "hist.time": "Time", "hist.event": "Event", "hist.service": "Service", "hist.port": "Port", "hist.detail": "Detail",
+    "hist.filter.days": "All time", "hist.filter.d1": "Today", "hist.filter.d7": "Last 7 days", "hist.filter.d30": "Last 30 days",
+    "hist.clear": "Clear history", "hist.clear.confirm": "Delete all history? This cannot be undone.",
+    "hist.filter.service": "Search by service name…", "hist.empty": "No history yet",
+    "hist.sqlite_bad": "SQLite history store unavailable",
+    "set.general": "General", "set.scan": "Scan", "set.class": "Classification", "set.hist": "History", "set.adv": "Advanced",
+    "set.language": "Language", "set.theme": "Theme", "set.defaultview": "Default view", "set.refresh": "Auto refresh",
+    "set.refresh.off": "Off", "set.theme.light": "Light", "set.theme.dark": "Dark", "set.view.card": "Cards", "set.view.list": "List",
+    "set.tcp": "TCP scanning", "set.udp": "UDP scanning", "set.ipv4": "IPv4", "set.ipv6": "IPv6",
+    "set.autop": "Automatic protocol probing", "set.gentle": "Gentle probing for GUI apps", "set.gentle.hint": "For apps inside .app bundles the auto-prober only connects and reads the first packet, never sending request bytes, so no app window can pop. Turn off for full probing. Manual re-probe always runs in full", "set.probe_to": "Probe timeout (ms)", "set.probe_workers": "Probe concurrency",
+    "set.show_unknown": "Show unknown services", "set.show_system": "Show system services",
+    "set.agg": "Aggregation strategy", "set.agg.process": "By process", "set.agg.endpoint": "By endpoint",
+    "set.show_conf": "Show identification confidence",
+    "set.retention": "History retention (days)",
+    "set.backend": "Backend version", "set.python": "Python version", "set.perms": "Scan permission status",
+    "set.perms.ok": "Normal (current user)", "set.perms.partial": "Partially limited (some processes)", "set.perms.none": "psutil unavailable, lsof only",
+    "set.errors": "Error log", "set.noerrors": "No errors", "set.public": "Public verification", "set.public.on": "Enable external verification",
+    "set.public.url": "Verify endpoint URL", "set.public.status": "Verification status", "set.security": "Security",
+    "set.security.hint": "The API binds to 127.0.0.1 only; writes require the CSRF token and same-origin; command lines are redacted; process stop is confirmed and identity-checked; local data is never uploaded.",
+    "set.saved": "Settings saved and applied", "set.apply": "Apply",
+    "empty.svc": "No services match the current filters", "empty.svc.hint": "Adjust filters or wait for auto refresh",
+    "empty.hist": "No history yet", "chart.max": "peak",
+    "relaunch": "Retry",
+  }
+};
+function t(k) { return (I18N[prefs.lang] && I18N[prefs.lang][k]) || I18N.en[k] || k; }
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+
+/* Canonical tag slugs (from backend) -> per-language labels.
+   Unknown slugs degrade to a humanised form of the slug itself. */
+const TAG_LABELS = {
+  zh: {
+    "web-ui": "网页界面", "rest-api": "API 接口", "websocket": "WebSocket",
+    "encrypted": "加密传输", "unknown": "未知",
+    "ai-service": "AI 服务", "development": "开发工具", "database": "数据库",
+    "cache": "缓存", "analytics": "数据分析", "coordination": "协调服务",
+    "search": "搜索引擎", "message-queue": "消息队列", "iot": "物联网",
+    "container": "容器", "remote-access": "远程访问", "web-server": "Web 服务器",
+    "proxy": "代理", "dns": "域名解析", "mail": "邮件", "directory": "目录服务",
+    "file-storage": "文件存储", "file-transfer": "文件传输", "time-sync": "时间同步",
+    "dhcp": "DHCP", "vpn": "VPN", "monitoring": "监控运维", "syslog": "系统日志",
+    "backup": "备份", "system-service": "系统服务",
+  },
+  en: {
+    "web-ui": "Web UI", "rest-api": "REST API", "websocket": "WebSocket",
+    "encrypted": "Encrypted", "unknown": "Unknown",
+    "ai-service": "AI Service", "development": "Development", "database": "Database",
+    "cache": "Cache", "analytics": "Analytics", "coordination": "Coordination",
+    "search": "Search", "message-queue": "Message Queue", "iot": "IoT",
+    "container": "Container", "remote-access": "Remote Access", "web-server": "Web Server",
+    "proxy": "Proxy", "dns": "DNS", "mail": "Mail", "directory": "Directory",
+    "file-storage": "File Storage", "file-transfer": "File Transfer", "time-sync": "Time Sync",
+    "dhcp": "DHCP", "vpn": "VPN", "monitoring": "Monitoring", "syslog": "Syslog",
+    "backup": "Backup", "system-service": "System Service",
+  },
+};
+function tagLabel(slug) {
+  const m = TAG_LABELS[prefs.lang] || TAG_LABELS.en;
+  if (m[slug]) return m[slug];
+  return slug.replace(/[-_]/g, " ").replace(/\b[a-z]/g, c => c.toUpperCase());
+}
+/* Backend service_type strings -> per-language labels */
+const TYPE_LABELS = {
+  zh: {
+    "AI Service": "AI 服务", "Development": "开发工具", "Web Framework": "Web 框架",
+    "Runtime": "运行时", "Database": "数据库", "Cache": "缓存",
+    "Coordination": "协调服务", "Search": "搜索引擎", "Message Queue": "消息队列",
+    "IoT Broker": "物联网消息代理", "Container": "容器", "Remote Access": "远程访问",
+    "Web Server": "Web 服务器", "Load Balancer": "负载均衡", "Proxy": "代理",
+    "DNS Server": "DNS 服务器", "Mail Server": "邮件服务器", "Directory": "目录服务",
+    "File Sharing": "文件共享", "Time Service": "时间服务", "DHCP": "DHCP 服务",
+    "Object Storage": "对象存储", "Monitoring": "监控", "System Service": "系统服务",
+  },
+};
+function typeLabel(s) {
+  if (!s) return "";
+  const m = TYPE_LABELS[prefs.lang];
+  return (m && m[s]) || s;
+}
+
+/* ================= API ================= */
+async function api(path, opts) {
+  opts = opts || {};
+  const headers = Object.assign({ "X-CSRF-Token": CSRF }, opts.headers || {});
+  if (opts.body !== undefined) headers["Content-Type"] = "application/json";
+  const r = await fetch(path, { method: opts.method || "GET", headers, body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined });
+  if (r.status === 403) { throw new Error("forbidden"); }
+  if (!r.ok && r.status !== 400) throw new Error("http " + r.status);
+  return r.json();
+}
+async function refreshData(manual) {
+  try {
+    const d = await api("/api/scan", { method: "POST" });
+    services = d.services || []; status = d.status || status; online = true;
+    setOffline(false);
+    renderCurrent();
+  } catch (e) {
+    online = false; setOffline(true);
+    if (manual) toast(t("offline"), true);
+  }
+}
+function setOffline(off) {
+  document.getElementById("offlineBanner").classList.toggle("show", off);
+  document.getElementById("offlineText").textContent = t("offline") + " ";
+  const dot = document.getElementById("scanDot");
+  dot.classList.toggle("off", off);
+}
+
+/* ================= Formatting ================= */
+function fmtTime(ts) {
+  if (!ts) return "—";
+  return new Intl.DateTimeFormat(prefs.lang === "zh" ? "zh-CN" : "en-US",
+    { hour12: false, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date(ts * 1000));
+}
+function fmtClock(ts) {
+  if (!ts) return "—";
+  return new Intl.DateTimeFormat(prefs.lang === "zh" ? "zh-CN" : "en-US",
+    { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date(ts * 1000));
+}
+function fmtDur(sec) {
+  if (sec == null || !isFinite(sec) || sec < 0) return "—";
+  const d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600), m = Math.floor(sec % 3600 / 60);
+  if (d) return prefs.lang === "zh" ? d + "天 " + h + "小时" : d + "d " + h + "h";
+  if (h) return prefs.lang === "zh" ? h + "小时 " + m + "分" : h + "h " + m + "m";
+  return prefs.lang === "zh" ? m + "分钟" : m + "m";
+}
+function fmtPct(v) { return v == null ? "—" : (Math.round(v * 10) / 10) + "%"; }
+function fmtMb(v) { return v == null ? "—" : (v >= 1024 ? (v / 1024).toFixed(1) + " GB" : Math.round(v) + " MB"); }
+function svcName(s) {
+  if (s.detected_service && s.detected_service !== "HTTP") return s.detected_service;
+  if (s.app_name) return s.app_name;
+  if (s.identify && s.identify.app) return s.identify.app;
+  if (s.proc_name) return s.proc_name;
+  return t("unknown.svc");
+}
+function primaryWeb(s, forOpen) {
+  if (!s.app_layer || ["http", "https", "websocket"].indexOf(s.app_layer) < 0) return null;
+  if (forOpen && !s.browser_openable) return null;  // JSON API / WS endpoint: not a page
+  const scheme = s.app_layer === "https" || s.app_layer === "websocket" ? "https" : "http";
+  const eps = s.endpoints.filter(e => e.proto === "tcp");
+  let ip = "127.0.0.1";
+  const lb = eps.find(e => e.ip === "127.0.0.1" || e.ip === "::1");
+  const lan = eps.find(e => e.scope === "lan");
+  if (!lb) { if (lan) ip = lan.ip; else if (eps.length && eps[0].scope !== "wildcard") ip = eps[0].ip; }
+  if (ip === "0.0.0.0" || ip === "*" || ip === "::") ip = "127.0.0.1";
+  const port = (lb || lan || eps[0] || {}).port || s.ports[0];
+  if (!port) return null;
+  return scheme + "://" + ip + ":" + port;
+}
+function scopeLabel(sc) { return t("scope." + sc) || sc; }
+
+/* ================= Nav ================= */
+const NAV = [
+  { id: "dashboard", icon: "i-dashboard", cat: null },
+  { id: "internet", icon: "i-globe", cat: "internet-web" },
+  { id: "lan", icon: "i-lan", cat: "lan-web" },
+  { id: "local", icon: "i-local", cat: "local-web" },
+  { id: "nonweb", icon: "i-nonweb", cat: "non-web" },
+  { id: "unknown", icon: "i-unknown", cat: "unknown" },
+  { sep: true },
+  { id: "history", icon: "i-history", cat: null },
+  { id: "settings", icon: "i-settings", cat: null },
+];
+function catCount(cat) { return services.filter(s => s.category === cat).length; }
+function renderNav() {
+  const nav = document.getElementById("nav");
+  nav.innerHTML = NAV.map(n => {
+    if (n.sep) return '<div class="nav-sep"></div>';
+    const badge = n.cat ? `<span class="nav-badge">${catCount(n.cat)}</span>` : "";
+    const lbl = `<span class="lbl">${esc(t("nav." + n.id))}</span>`;
+    return `<button class="nav-item ${prefs.page === n.id ? "active" : ""}" data-nav="${n.id}" ${prefs.navCollapsed ? `data-tip="${esc(t("nav." + n.id))}"` : ""}><svg width="17" height="17"><use href="#${n.icon}"/></svg>${lbl}${badge}</button>`;
+  }).join("");
+}
+function setPage(p) {
+  prefs.page = p; savePrefs(); selectedId = null; closeDetail(); renderAll();
+  if (p === "history") loadHistory();
+  if (p === "settings") loadSettingsPage();
+}
+
+/* ================= Sorting / filtering ================= */
+function sortVal(s, k) {
+  switch (k) {
+    case "name": return svcName(s).toLowerCase();
+    case "port": return s.ports.length ? s.ports[0] : 99999;
+    case "cpu": return s.cpu_percent == null ? -1 : s.cpu_percent;
+    case "mem": return s.memory_mb == null ? -1 : s.memory_mb;
+    case "started": return s.started_ts || 0;
+  }
+  return 0;
+}
+function filteredList(catFilter) {
+  let list = services.slice();
+  if (catFilter) list = list.filter(s => s.category === catFilter);
+  if (prefs.tagFilter) list = list.filter(s => (s.tags || []).indexOf(prefs.tagFilter) >= 0);
+  const q = search.trim().toLowerCase();
+  if (q) list = list.filter(s => {
+    const hay = [svcName(s), s.proc_name, s.app_name, s.exe, String(s.pid),
+      (s.ports || []).join(" "), (s.protocols || []).join(" "),
+      (s.tags || []).map(x => x + " " + tagLabel(x)).join(" "),
+      s.app_layer || "", s.category || "", (s.endpoints || []).map(e => e.ip).join(" ")].join(" ").toLowerCase();
+    return hay.indexOf(q) >= 0;
+  });
+  list.sort((a, b) => {
+    const va = sortVal(a, prefs.sortKey), vb = sortVal(b, prefs.sortKey);
+    return (va < vb ? -1 : va > vb ? 1 : 0) * prefs.sortDir;
+  });
+  return list;
+}
+
+/* ================= Toolbar ================= */
+function toolbarHTML(showSortSelect) {
+  const tags = Array.from(new Set([].concat.apply([], services.map(s => s.tags || [])))).sort();
+  return `<div class="toolbar">
+    <div class="seg">
+      <button data-view="card" class="${prefs.view === "card" ? "on" : ""}"><svg width="13" height="13"><use href="#i-card"/></svg>${esc(t("view.card"))}</button>
+      <button data-view="list" class="${prefs.view === "list" ? "on" : ""}"><svg width="13" height="13"><use href="#i-rows"/></svg>${esc(t("view.list"))}</button>
+    </div>
+    <select class="select" id="tagFilter">
+      <option value="">${esc(t("filter.tag"))}</option>
+      ${tags.map(x => `<option value="${esc(x)}" ${prefs.tagFilter === x ? "selected" : ""}>${esc(tagLabel(x))}</option>`).join("")}
+    </select>
+    ${showSortSelect ? `<select class="select" id="sortSel">
+      ${["name","port","cpu","mem","started"].map(k => `<option value="${k}" ${prefs.sortKey === k ? "selected" : ""}>${esc(t("sort." + k))}</option>`).join("")}
+    </select>` : ""}
+    <div class="spacer"></div>
+    <span class="count-hint" id="countHint"></span>
+  </div>`;
+}
+
+/* ================= Cards ================= */
+function iconForSvc(s) {
+  if (s.category === "internet-web") return "i-globe";
+  if (s.category === "lan-web") return "i-lan";
+  if (s.category === "local-web") return "i-local";
+  if (s.category === "non-web") return "i-nonweb";
+  return "i-unknown";
+}
+function statusInfo(s) {
+  if (s.permission === "denied") return { label: t("st.denied"), cls: "off" };
+  if (s.permission === "gone") return { label: t("st.gone"), cls: "off" };
+  return { label: t("st.running"), cls: "" };
+}
+function cardHTML(s) {
+  const url = primaryWeb(s);
+  const addr = url || ((s.ports[0] || "?") + " · " + (s.protocols || []).join("/"));
+  const st = statusInfo(s);
+  const scopeTags = scopeTagsOf(s);
+  const showConf = (settingsCache == null || settingsCache.show_confidence !== false);
+  return `<div class="svc-card" data-id="${esc(s.id)}">
+    <div class="sc-head">
+      <div class="sc-icon cat-${esc(s.category)}"><svg width="18" height="18"><use href="#${iconForSvc(s)}"/></svg></div>
+      <div class="sc-title"><div class="n">${esc(svcName(s))}</div><div class="a">${esc(s.app_name || s.proc_name || t("unknown.app"))} · PID ${s.pid}</div></div>
+      <div class="sc-status"><span class="dot ${st.cls}"></span>${esc(st.label)}</div>
+    </div>
+    <div class="sc-addr">${url ? `<b>${esc(url)}</b>` : esc(addr)}</div>
+    <div class="badges">
+      ${scopeTags}${s.app_layer ? `<span class="tag">${esc(s.app_layer.toUpperCase())}</span>` : ""}
+      ${(s.tags || []).slice(0, 3).map(x => `<span class="tag" title="${esc(x)}">${esc(tagLabel(x))}</span>`).join("")}
+      ${showConf && s.confidence !== "unknown" ? `<span class="tag conf-${esc(s.confidence)}">${esc(t("conf." + s.confidence))}</span>` : ""}
+    </div>
+    <div class="sc-metrics">
+      <span class="m"><svg><use href="#i-cpu"/></svg><b data-m="cpu-${esc(s.id)}">${esc(fmtPct(s.cpu_percent))}</b></span>
+      <span class="m"><svg><use href="#i-mem"/></svg><b data-m="mem-${esc(s.id)}">${esc(fmtMb(s.memory_mb))}</b></span>
+      <span class="m" style="margin-left:auto;font-family:var(--mono)">${(s.endpoints || []).length} ep</span>
+    </div>
+    <div class="sc-actions">
+      <button class="icon-btn" data-act="open" data-id="${esc(s.id)}" ${primaryWeb(s, true) ? "" : "disabled"} data-tip="${esc(t("open"))}"><svg><use href="#i-open"/></svg></button>
+      <button class="icon-btn" data-act="copyurl" data-id="${esc(s.id)}" data-tip="${esc(t("act.copy_url"))}"><svg><use href="#i-copy"/></svg></button>
+      <button class="icon-btn" data-act="detail" data-id="${esc(s.id)}" data-tip="${esc(t("detail"))}"><svg><use href="#i-detail"/></svg></button>
+      <div class="menu-wrap">
+        <button class="icon-btn" data-act="menu" data-id="${esc(s.id)}" data-tip="${esc(t("more"))}"><svg><use href="#i-more"/></svg></button>
+        <div class="menu" id="menu-${esc(s.id)}">
+          <button data-act="copyip" data-id="${esc(s.id)}"><svg width="13" height="13"><use href="#i-copy"/></svg>${esc(t("act.copy_ip"))}</button>
+          <button data-act="copyport" data-id="${esc(s.id)}"><svg width="13" height="13"><use href="#i-copy"/></svg>${esc(t("act.copy_port"))}</button>
+          <button data-act="copypid" data-id="${esc(s.id)}"><svg width="13" height="13"><use href="#i-copy"/></svg>${esc(t("act.copy_pid"))}</button>
+          <button data-act="copypath" data-id="${esc(s.id)}"><svg width="13" height="13"><use href="#i-copy"/></svg>${esc(t("act.copy_path"))}</button>
+          <div class="sep"></div>
+          <button data-act="reprobe" data-id="${esc(s.id)}"><svg width="13" height="13"><use href="#i-probe"/></svg>${esc(t("act.reprobe"))}</button>
+          <button data-act="viewhist" data-id="${esc(s.id)}"><svg width="13" height="13"><use href="#i-history"/></svg>${esc(t("act.viewhistory"))}</button>
+          <div class="sep"></div>
+          <button class="danger" data-act="stop" data-id="${esc(s.id)}"><svg width="13" height="13"><use href="#i-power"/></svg>${esc(t("act.stop"))}</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+function scopeTagsOf(s) {
+  const out = [];
+  const sc = s.scopes || {};
+  if (sc.public_verified) out.push(`<span class="tag scope">${esc(t("scope.public_verified"))}</span>`);
+  else if (sc.public_condition) out.push(`<span class="tag scope wild">${esc(t("scope.public_condition"))}</span>`);
+  if (sc.loopback) out.push(`<span class="tag scope">${esc(t("scope.loopback"))}</span>`);
+  if (sc.lan) out.push(`<span class="tag scope">${esc(t("scope.lan"))}</span>`);
+  if (sc.wildcard && !sc.lan && !sc.loopback) out.push(`<span class="tag scope wild">${esc(t("scope.wildcard"))}</span>`);
+  if (s.permission === "denied") out.push('<span class="tag perm">' + esc(t("st.denied")) + "</span>");
+  return out.join("");
+}
+
+/* ================= Table ================= */
+const COLS = [
+  { k: "name", l: "f.service_name" }, { k: "pid", l: "PID" }, { k: "port", l: "f.listen" },
+  { k: "proto", l: "f.protocol" }, { k: "scope", l: "f.scope" },
+  { k: "cpu", l: "cpu" }, { k: "mem", l: "mem" }, { k: "started", l: "f.started" },
+];
+function rowHTML(s) {
+  const col = COLS.findIndex(c => c.k === prefs.sortKey);
+  const url = primaryWeb(s);
+  return `<tr data-id="${esc(s.id)}">
+    <td class="${col === 0 ? "sorted-cell" : ""}"><div class="tname"><span class="ticon"><svg><use href="#${iconForSvc(s)}"/></svg></span>${esc(svcName(s))}</div></td>
+    <td class="num">${s.pid}</td>
+    <td class="mono">${s.ports.join(", ")}${(s.protocols || []).includes("udp") ? " <span class='tag' style='font-size:9.5px'>UDP</span>" : ""}</td>
+    <td class="mono">${esc((s.app_layer || (s.protocols || []).join("/")).toUpperCase())}</td>
+    <td>${scopeTagsOf(s)}</td>
+    <td class="num" data-m="cpu-${esc(s.id)}">${esc(fmtPct(s.cpu_percent))}</td>
+    <td class="num" data-m="mem-${esc(s.id)}">${esc(fmtMb(s.memory_mb))}</td>
+    <td class="mono">${esc(url || s.started_ts ? fmtTime(s.started_ts) : "—")}</td>
+  </tr>`;
+}
+function tableHTML(list) {
+  return `<div class="tbl-wrap"><table class="svc"><thead><tr>
+    ${COLS.map(c => `<th data-sort="${c.k}" class="${prefs.sortKey === c.k ? "sorted" : ""}">${esc(c.l && c.l.indexOf(".") > 0 ? t(c.l) : t(c.l))}<span class="arw">${prefs.sortKey === c.k ? (prefs.sortDir > 0 ? "▲" : "▼") : "▲"}</span></th>`).join("")}
+    </tr></thead><tbody>${list.map(rowHTML).join("")}</tbody></table></div>`;
+}
+
+/* ================= Flicker-free rendering ================= */
+function svcSig(s) {
+  const sc = s.scopes || {};
+  return [s.id, s.category, (s.tags || []).join(","), (s.ports || []).join(","),
+    s.confidence, s.app_layer || "", s.proc_name || "", s.app_name || "",
+    s.detected_service || "", s.permission, (s.basis || []).length,
+    s.passive_probe ? 1 : 0, s.reachable === true ? 1 : 0,
+    sc.loopback ? 1 : 0, sc.lan ? 1 : 0, sc.wildcard ? 1 : 0,
+    sc.public_condition ? 1 : 0, sc.public_verified ? 1 : 0,
+    (s.endpoints || []).length, s.started_ts || 0].join("~");
+}
+function listSig(list) {
+  return [prefs.page, prefs.view, prefs.tagFilter, prefs.sortKey, prefs.sortDir,
+    prefs.lang,
+    search, settingsCache && settingsCache.show_confidence === false ? 0 : 1,
+    list.map(svcSig).join("|")].join("#");
+}
+function updateMetrics() {
+  document.querySelectorAll("[data-m]").forEach(el => {
+    const raw = el.dataset.m, i = raw.indexOf("-");
+    const kind = raw.slice(0, i), id = raw.slice(i + 1);
+    const s = services.find(x => x.id === id);
+    if (!s) return;
+    el.textContent = kind === "cpu" ? fmtPct(s.cpu_percent) : fmtMb(s.memory_mb);
+  });
+}
+function paintList(el, list, pre) {
+  const sig = listSig(list);
+  if (sig === el._sig && el.querySelector(".svc-card, .tbl-wrap")) {
+    updateMetrics(); return;
+  }
+  el._sig = sig;
+  el.innerHTML = (pre || "") + toolbarHTML(true) + (list.length
+    ? (prefs.view === "card" ? `<div class="grid">${list.map(cardHTML).join("")}</div>` : tableHTML(list))
+    : emptyHTML());
+  const hint = document.getElementById("countHint");
+  if (hint) hint.textContent = list.length + " " + t("count.services");
+}
+/* ================= Pages ================= */
+function statsHTML() {
+  const ports = services.reduce((n, s) => n + (s.endpoints || []).length, 0);
+  const defs = [
+    ["stat.services", services.length, "i-list", "stat.hint.services"],
+    ["stat.ports", ports, "i-nonweb", "stat.hint.ports"],
+    ["stat.internet", catCount("internet-web"), "i-globe"],
+    ["stat.lan", catCount("lan-web"), "i-lan"],
+    ["stat.local", catCount("local-web"), "i-local"],
+    ["stat.nonweb", catCount("non-web"), "i-nonweb"],
+    ["stat.unknown", catCount("unknown"), "i-unknown"],
+  ];
+  return `<div class="stats">${defs.map(d => `<div class="stat">
+      <div class="k"><svg><use href="#${d[2]}"/></svg>${esc(t(d[0]))}</div>
+      <div class="v">${d[1]}</div>${d[3] ? `<div class="hint">${esc(t(d[3]))}</div>` : ""}
+    </div>`).join("")}</div>`;
+}
+function emptyHTML() {
+  return `<div class="empty"><div class="eicon"><svg width="26" height="26"><use href="#i-local"/></svg></div>
+    <div class="et">${esc(t("empty.svc"))}</div><div>${esc(t("empty.svc.hint"))}</div></div>`;
+}
+function renderServicePage(cat) {
+  paintList(document.getElementById("content"), filteredList(cat));
+}
+function renderDashboard() {
+  paintList(document.getElementById("content"), filteredList(null), statsHTML());
+}
+
+/* ================= History ================= */
+const HIST_TYPES = ["first_seen", "appeared", "disappeared", "endpoint_change", "classification_change", "stopped"];
+async function loadHistory() {
+  try {
+    const days = histFilter.days || (settingsCache && settingsCache.history_retention_days) || 30;
+    const since = (days ? Date.now() / 1000 - days * 86400 : 0);
+    const d = await api(`/api/history?limit=800&since=${since}` + (histFilter.type ? "&type=" + histFilter.type : ""));
+    historyData = d.events || [];
+    if (d.sqlite_ok === false) toast(t("hist.sqlite_bad"), true);
+    renderHistoryPage();
+  } catch (e) { /* offline handled elsewhere */ }
+}
+function renderHistoryPage() {
+  const el = document.getElementById("content");
+  const q = histFilter.q.toLowerCase();
+  const rows = historyData.filter(ev => !q || (ev.name || "").toLowerCase().includes(q) || (ev.service_id || "").toLowerCase().includes(q));
+  el.innerHTML = `<div class="hist-filters">
+      <select class="select" id="histDays">${[["", "hist.filter.days"], ["1", "hist.filter.d1"], ["7", "hist.filter.d7"], ["30", "hist.filter.d30"]].map(o => `<option value="${o[0]}" ${String(histFilter.days) === o[0] ? "selected" : ""}>${esc(t(o[1]))}</option>`).join("")}</select>
+      <select class="select" id="histType"><option value="">${esc(t("hist.event"))}</option>${HIST_TYPES.map(x => `<option value="${x}" ${histFilter.type === x ? "selected" : ""}>${esc(t("hist.ev." + x))}</option>`).join("")}</select>
+      <input class="select" id="histQ" placeholder="${esc(t("hist.filter.service"))}" value="${esc(histFilter.q)}" style="width:220px">
+      <div class="spacer" style="flex:1"></div>
+      <button class="btn danger" id="histClear"><svg width="13" height="13"><use href="#i-trash"/></svg>${esc(t("hist.clear"))}</button>
+    </div>
+    ${rows.length ? `<div class="tbl-wrap"><table class="hist"><thead><tr><th>${esc(t("hist.time"))}</th><th>${esc(t("hist.event"))}</th><th>${esc(t("hist.service"))}</th><th>${esc(t("hist.port"))}</th><th>${esc(t("hist.detail"))}</th></tr></thead><tbody>
+      ${rows.map(ev => `<tr><td class="time">${esc(fmtTime(ev.ts))}</td><td><span class="ev ${esc(ev.type)}">${esc(t("hist.ev." + ev.type) || ev.type)}</span></td><td>${esc(ev.name || "—")} <span class="mono" style="font-size:10px;color:var(--text-2)">${esc(ev.service_id)}</span></td><td class="num">${ev.port ?? "—"}</td><td class="detail-cell">${esc(ev.detail || "")}</td></tr>`).join("")}
+    </tbody></table></div>` : `<div class="empty"><div class="eicon"><svg width="24" height="24"><use href="#i-history"/></svg></div><div class="et">${esc(t("empty.hist"))}</div></div>`}`;
+}
+
+/* ================= Settings ================= */
+async function loadSettingsPage() {
+  try {
+    const d = await api("/api/settings");
+    settingsCache = d.settings;
+    renderSettingsPage();
+  } catch (e) { renderSettingsPage(); }
+}
+async function saveServerSettings(patch) {
+  try {
+    const d = await api("/api/settings", { method: "POST", body: { settings: patch } });
+    settingsCache = d.settings; toast(t("set.saved")); refreshData();
+  } catch (e) { toast(t("offline"), true); }
+}
+function renderSettingsPage() {
+  const st = settingsCache || {};
+  const el = document.getElementById("content");
+  const sw = (k, on) => `<div class="switch ${on ? "on" : ""}" data-setting="${k}"></div>`;
+  el.innerHTML = `<div class="settings">
+    <div class="set-group"><h3><svg><use href="#i-settings"/></svg>${esc(t("set.general"))}</h3>
+      <div class="field"><div><div class="fl">${esc(t("set.language"))}</div></div>
+        <select class="select" id="setLang"><option value="zh" ${prefs.lang === "zh" ? "selected" : ""}>简体中文</option><option value="en" ${prefs.lang === "en" ? "selected" : ""}>English</option></select></div>
+      <div class="field"><div><div class="fl">${esc(t("set.theme"))}</div></div>
+        <select class="select" id="setTheme"><option value="light" ${prefs.theme === "light" ? "selected" : ""}>${esc(t("set.theme.light"))}</option><option value="dark" ${prefs.theme === "dark" ? "selected" : ""}>${esc(t("set.theme.dark"))}</option></select></div>
+      <div class="field"><div><div class="fl">${esc(t("set.defaultview"))}</div></div>
+        <select class="select" id="setView"><option value="card" ${prefs.view === "card" ? "selected" : ""}>${esc(t("set.view.card"))}</option><option value="list" ${prefs.view === "list" ? "selected" : ""}>${esc(t("set.view.list"))}</option></select></div>
+      <div class="field"><div><div class="fl">${esc(t("set.refresh"))}</div></div>
+        <select class="select" id="setRefresh">${[0,3,5,10,30].map(v => `<option value="${v}" ${prefs.refreshInterval === v ? "selected" : ""}>${v === 0 ? esc(t("set.refresh.off")) : v + " s"}</option>`).join("")}</select></div>
+    </div>
+    <div class="set-group"><h3><svg><use href="#i-probe"/></svg>${esc(t("set.scan"))}</h3>
+      <div class="field"><div class="fl">${esc(t("set.tcp"))}</div>${sw("tcp_enabled", st.tcp_enabled !== false)}</div>
+      <div class="field"><div class="fl">${esc(t("set.udp"))}</div>${sw("udp_enabled", st.udp_enabled !== false)}</div>
+      <div class="field"><div class="fl">${esc(t("set.ipv4"))}</div>${sw("ipv4_enabled", st.ipv4_enabled !== false)}</div>
+      <div class="field"><div class="fl">${esc(t("set.ipv6"))}</div>${sw("ipv6_enabled", st.ipv6_enabled !== false)}</div>
+      <div class="field"><div class="fl">${esc(t("set.autop"))}</div>${sw("auto_prober", st.auto_prober !== false)}</div>
+      <div class="field"><div><div class="fl">${esc(t("set.gentle"))}</div><div class="fhint">${esc(t("set.gentle.hint"))}</div></div>${sw("gentle_gui_probing", st.gentle_gui_probing !== false)}</div>
+      <div class="field"><div class="fl">${esc(t("set.probe_to"))}</div><input class="select" type="number" min="200" max="10000" step="100" value="${esc(st.probe_timeout_ms ?? 900)}" data-setting-num="probe_timeout_ms"></div>
+      <div class="field"><div class="fl">${esc(t("set.probe_workers"))}</div><input class="select" type="number" min="1" max="32" value="${esc(st.probe_max_workers ?? 8)}" data-setting-num="probe_max_workers"></div>
+    </div>
+    <div class="set-group"><h3><svg><use href="#i-list"/></svg>${esc(t("set.class"))}</h3>
+      <div class="field"><div class="fl">${esc(t("set.show_unknown"))}</div>${sw("show_unknown", st.show_unknown !== false)}</div>
+      <div class="field"><div class="fl">${esc(t("set.show_system"))}</div>${sw("show_system", st.show_system !== false)}</div>
+      <div class="field"><div><div class="fl">${esc(t("set.agg"))}</div></div>
+        <select class="select" data-setting-sel="aggregate_by"><option value="process" ${(st.aggregate_by || "process") === "process" ? "selected" : ""}>${esc(t("set.agg.process"))}</option><option value="endpoint" ${st.aggregate_by === "endpoint" ? "selected" : ""}>${esc(t("set.agg.endpoint"))}</option></select></div>
+      <div class="field"><div><div class="fl">${esc(t("set.show_conf"))}</div></div><div class="switch ${(prefs.show_confidence !== false) ? "on" : ""}" data-setting="show_confidence_local"></div></div>
+    </div>
+    <div class="set-group"><h3><svg><use href="#i-history"/></svg>${esc(t("set.hist"))}</h3>
+      <div class="field"><div class="fl">${esc(t("set.retention"))}</div><input class="select" type="number" min="1" max="365" value="${esc(st.history_retention_days ?? 30)}" data-setting-num="history_retention_days"></div>
+      <div class="field"><div class="fl">${esc(t("hist.clear"))}</div><button class="btn danger" id="setClearHist"><svg width="13" height="13"><use href="#i-trash"/></svg>${esc(t("hist.clear"))}</button></div>
+    </div>
+    <div class="set-group"><h3><svg><use href="#i-shield"/></svg>${esc(t("set.adv"))}</h3>
+      <div class="field"><div class="fl">${esc(t("set.backend"))}</div><span class="count-hint mono">${esc(status ? status.version || "1.0.0" : "1.0.0")}</span></div>
+      <div class="field"><div class="fl">${esc(t("set.python"))}</div><span class="count-hint mono">${esc(status ? status.python : "—")}</span></div>
+      <div class="field"><div class="fl">${esc(t("set.perms"))}</div><span class="count-hint">${esc(status && !status.psutil ? t("set.perms.none") : status && status.permission_ok === false ? t("set.perms.partial") : t("set.perms.ok"))}</span></div>
+      <div class="field"><div class="fl">${esc(t("set.public.on"))}</div>${sw("public_verify_enabled", st.public_verify_enabled === true)}</div>
+      <div class="field"><div class="fl">${esc(t("set.public.url"))}</div><input class="select" style="max-width:180px" data-setting-str="public_verify_url" value="${esc(st.public_verify_url || "")}" placeholder="https://…"></div>
+      <div id="pubStatus"><div class="set-note" style="margin-top:6px">${esc(t("set.public.status"))}: <span id="pubStatusV">…</span></div></div>
+      <div class="set-note" style="margin-top:10px">${esc(t("set.security.hint"))}</div>
+    </div>
+    <div class="set-group"><h3><svg><use href="#i-warn"/></svg>${esc(t("set.errors"))}</h3>
+      <div class="errlog" id="errlog">${esc(t("set.noerrors"))}</div>
+    </div>
+  </div>`;
+  api("/api/errors").then(d => {
+    const e = document.getElementById("errlog");
+    if (e) e.textContent = (d.errors || []).length ? d.errors.map(x => fmtTime(x.ts) + " " + x.where + ": " + x.error).join("\n") : t("set.noerrors");
+  }).catch(() => {});
+  api("/api/verify-public").then(d => {
+    const v = document.getElementById("pubStatusV");
+    if (v) v.textContent = d.status === "unverified" ? (t("scope.public_condition") + (d.reason ? " — " + d.reason : "")) : d.status;
+  }).catch(() => {});
+}
+
+/* ================= Detail ================= */
+function detailHTML(s) {
+  const url = primaryWeb(s);
+  const showConf = settingsCache == null || settingsCache.show_confidence !== false;
+  const basis = (s.basis || []).map(b => {
+    if (typeof b === "string") return `<div class="basis-item"><svg><use href="#i-check"/></svg><span>${esc(b)}</span></div>`;
+    if (b.kind === "rule") return `<div class="basis-item"><svg><use href="#i-check"/></svg><span>${esc(t("basis.rule"))}: ${esc(b.field)} ~ /${esc(b.pattern)}/</span></div>`;
+    if (b.kind === "probe") return `<div class="basis-item"><svg><use href="#i-check"/></svg><span>${esc(t("basis.probe"))}: ${esc(b.proto || "")}${b.status ? " · HTTP " + b.status : ""}${b.server ? " · " + esc(b.server) : ""}${b.reachable ? "" : " · " + esc(t("f.unreachable"))}</span></div>`;
+    if (b.kind === "passive") return `<div class="basis-item"><svg><use href="#i-check"/></svg><span>${esc(t("basis.passive"))}</span></div>`;
+    return "";
+  }).join("");
+  const eps = (s.endpoints || []).map(e => `<div class="ep-row">
+      <span>${esc(e.ip === "*" ? "0.0.0.0" : e.ip)}:${e.port ?? "*"}</span>
+      <span class="tag">${esc(e.proto.toUpperCase())}</span><span class="tag">${esc(e.family.toUpperCase())}</span>
+      <span class="scope-p">${esc(scopeLabel(e.scope))}</span></div>`).join("");
+  return `<div class="d-head">
+      <div class="sc-icon cat-${esc(s.category)}"><svg width="20" height="20"><use href="#${iconForSvc(s)}"/></svg></div>
+      <div><h2>${esc(svcName(s))}</h2><div class="sub">${esc(s.app_name || s.proc_name || "")} · PID ${s.pid} · <span id="dStatus">${esc(statusInfo(s).label)}</span></div></div>
+      <button class="icon-btn d-close" data-act="closedetail"><svg width="15" height="15"><use href="#i-x"/></svg></button>
+    </div>
+    <div class="d-body">
+      <div class="d-sec"><h3>${esc(t("d.basic"))}</h3><div class="kv">
+        <div class="k">${esc(t("f.service_name"))}</div><div class="v plain">${esc(svcName(s))}</div>
+        <div class="k">${esc(t("f.app_name"))}</div><div class="v plain">${esc(s.app_name || "—")}</div>
+        <div class="k">${esc(t("f.proc_name"))}</div><div class="v plain">${esc(s.proc_name || "—")}</div>
+        <div class="k">${esc(t("f.pid"))}</div><div class="v">${s.pid}</div>
+        <div class="k">${esc(t("f.ppid"))}</div><div class="v">${s.ppid ?? "—"}</div>
+        <div class="k">${esc(t("f.exe"))}</div><div class="v">${esc(s.exe || (s.permission === "denied" ? t("perm.denied") : "—"))}</div>
+        <div class="k">${esc(t("f.cmd"))}</div><div class="v">${esc(s.cmdline || (s.permission === "denied" ? t("perm.denied") : "—"))}</div>
+        <div class="k">${esc(t("f.started"))}</div><div class="v plain">${s.started_ts ? esc(fmtTime(s.started_ts)) : "—"}</div>
+        <div class="k">${esc(t("f.first_seen"))}</div><div class="v plain">${esc(fmtTime(s.first_seen_ts))}</div>
+        <div class="k">${esc(t("f.runtime"))}</div><div class="v plain">${esc(fmtDur(s.started_ts ? Date.now() / 1000 - s.started_ts : null))}</div>
+      </div></div>
+      <div class="d-sec"><h3>${esc(t("d.network"))}</h3>
+        ${eps}
+        <div class="kv" style="margin-top:10px">
+          <div class="k">${esc(t("f.protocol"))}</div><div class="v plain">${esc((s.app_layer || "—").toUpperCase())}${s.detected_service ? " · " + esc(s.detected_service) : ""}</div>
+          <div class="k">${esc(t("f.url"))}</div><div class="v">${url ? esc(url) : "—"}</div>
+          <div class="k">${esc(t("f.scope"))}</div><div class="v plain">${scopeTagsOf(s).replace(/class="tag[^"]*"/g, 'class="tag"')}</div>
+          <div class="k">${esc(t("f.connectivity"))}</div><div class="v plain">${s.probed ? (s.reachable ? esc(t("f.reachable")) : esc(t("f.unreachable"))) : esc(t("f.not_probed"))}${status && status.scanning ? " · " + esc(t("scan.running")) : ""}</div>
+        </div></div>
+      <div class="d-sec"><h3>${esc(t("d.resource"))}</h3>
+        <div class="kv"><div class="k">${esc(t("cpu"))}</div><div class="v plain" id="dCpu">${esc(fmtPct(s.cpu_percent))}</div>
+        <div class="k">${esc(t("mem"))}</div><div class="v plain" id="dMem">${esc(fmtMb(s.memory_mb))}</div></div>
+        <div class="charts" style="margin-top:10px">
+          <div class="chart"><div class="ct">${esc(t("cpu_hist"))}<b id="cpuPeak"></b></div><div id="cpuChart" class="no_data">${esc(t("no_data"))}</div></div>
+          <div class="chart"><div class="ct">${esc(t("mem_hist"))}<b id="memPeak"></b></div><div id="memChart" class="no_data" style="font-size:10.5px;color:var(--text-2)">${esc(t("no_data"))}</div></div>
+        </div></div>
+      ${showConf ? `<div class="d-sec"><h3>${esc(t("d.ident"))}</h3><div class="kv">
+        <div class="k">${esc(t("f.type"))}</div><div class="v plain">${esc(s.service_type ? typeLabel(s.service_type) : t("unknown.svc"))}</div>
+        <div class="k">${esc(t("f.tags"))}</div><div class="v plain">${(s.tags || []).map(x => `<span class="tag">${esc(tagLabel(x))}</span>`).join(" ")}</div>
+        <div class="k">${esc(t("f.confidence"))}</div><div class="v plain"><span class="tag conf-${esc(s.confidence)}">${esc(t("conf." + s.confidence))}</span></div>
+        </div><h3 style="margin-top:12px">${esc(t("f.basis"))}</h3>${basis || `<div class="basis-item">${esc(t("conf.unknown"))}</div>`}</div>` : ""}
+      <div class="d-sec"><h3>${esc(t("d.actions"))}</h3><div class="d-actions">
+        <button class="btn primary" data-act="open" data-id="${esc(s.id)}" ${primaryWeb(s, true) ? "" : "disabled"}><svg><use href="#i-open"/></svg>${esc(t("open"))}</button>
+        <button class="btn" data-act="copyurl" data-id="${esc(s.id)}"><svg><use href="#i-copy"/></svg>${esc(t("act.copy_url"))}</button>
+        <button class="btn" data-act="copyip" data-id="${esc(s.id)}">${esc(t("act.copy_ip"))}</button>
+        <button class="btn" data-act="copyport" data-id="${esc(s.id)}">${esc(t("act.copy_port"))}</button>
+        <button class="btn" data-act="copypid" data-id="${esc(s.id)}">${esc(t("act.copy_pid"))}</button>
+        <button class="btn" data-act="copypath" data-id="${esc(s.id)}">${esc(t("act.copy_path"))}</button>
+        <button class="btn" data-act="copycmd" data-id="${esc(s.id)}">${esc(t("act.copy_cmd"))}</button>
+        <button class="btn" data-act="reprobe" data-id="${esc(s.id)}"><svg><use href="#i-probe"/></svg>${esc(t("act.reprobe"))}</button>
+        <button class="btn danger" data-act="stop" data-id="${esc(s.id)}"><svg><use href="#i-power"/></svg>${esc(t("act.stop"))}</button>
+      </div></div>
+    </div>`;
+}
+function openDetail(id) {
+  const s = services.find(x => x.id === id);
+  if (!s) return;
+  selectedId = id;
+  detailSig = "";
+  const d = document.getElementById("detail");
+  d.innerHTML = detailHTML(s);
+  d.classList.add("show"); document.getElementById("scrim").classList.add("show");
+  markSelected();
+  loadCharts(id);
+  clearInterval(detailTimer);
+  detailTimer = setInterval(() => {
+    if (!selectedId) return;
+    const cur = services.find(x => x.id === selectedId);
+    if (!cur) return;
+    if (svcSig(cur) !== detailSig) {
+      // structural change (classification, endpoints…): rebuild panel
+      document.getElementById("detail").innerHTML = detailHTML(cur);
+      detailSig = svcSig(cur);
+    } else {
+      const e1 = document.getElementById("dCpu"), e2 = document.getElementById("dMem");
+      if (e1) e1.textContent = fmtPct(cur.cpu_percent);
+      if (e2) e2.textContent = fmtMb(cur.memory_mb);
+    }
+    loadCharts(selectedId);
+  }, 4000);
+}
+function closeDetail() {
+  selectedId = null;
+  document.getElementById("detail").classList.remove("show");
+  document.getElementById("scrim").classList.remove("show");
+  clearInterval(detailTimer);
+  markSelected();
+}
+function loadCharts(id) {
+  api("/api/resources?id=" + encodeURIComponent(id)).then(d => {
+    const pts = d.points || [];
+    drawChart("cpuChart", "cpuPeak", pts.map(p => [p.ts, p.cpu]), v => v == null ? null : v.toFixed(0) + "%");
+    drawChart("memChart", "memPeak", pts.map(p => [p.ts, p.mem]), v => fmtMb(v));
+  }).catch(() => {});
+}
+function drawChart(elId, peakId, pairs, fmtV) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  const vals = pairs.map(p => p[1]).filter(v => v != null);
+  if (!vals.length) { el.innerHTML = t("no_data"); el.className = "no_data"; return; }
+  el.className = "";
+  const W = 170, H = 56, n = pairs.length;
+  const max = Math.max.apply(null, vals), min = 0;
+  const xs = i => (n === 1 ? W / 2 : i / (n - 1) * (W - 6) + 3);
+  const ys = v => v == null ? H - 4 : H - 6 - ((v - min) / (max - min || 1)) * (H - 12);
+  const path = pairs.map((p, i) => (i === 0 ? "M" : "L") + xs(i).toFixed(1) + " " + ys(p[1]).toFixed(1)).join(" ");
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+    <path d="${path} L ${xs(n - 1).toFixed(1)} ${H} L ${xs(0).toFixed(1)} ${H} Z" fill="var(--accent)" opacity="0.10"></path>
+    <path d="${path}" fill="none" stroke="var(--accent)" stroke-width="1.6" stroke-linejoin="round"></path></svg>`;
+  const peak = document.getElementById(peakId);
+  if (peak) peak.textContent = fmtV(max);
+}
+
+/* ================= Actions ================= */
+function byId(id) { return services.find(x => x.id === id); }
+function doCopy(text) {
+  if (text == null) return toast(t("copy.fail"), true);
+  const done = () => toast(t("copy.ok"));
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(String(text)).then(done).catch(() => fallback());
+  } else fallback();
+  function fallback() {
+    const ta = document.createElement("textarea");
+    ta.value = String(text); ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); done(); } catch (e) { toast(t("copy.fail"), true); }
+    document.body.removeChild(ta);
+  }
+}
+const STOP_ERRORS = {
+  self_stop_forbidden: "stop.self", denied: "stop.denied", identity_mismatch: "stop.mismatch",
+  protected_system_process: "stop.protected", not_found: "stop.notfound",
+  psutil_unavailable: "perm.unavailable", failed: "stop.denied",
+};
+let pendingStopPid = null;
+function openStopModal(id) {
+  const s = byId(id);
+  if (!s) return;
+  pendingStopPid = s;
+  document.getElementById("stopTitle").textContent = t("stop.title");
+  document.getElementById("stopMsg").textContent = t("stop.msg");
+  document.getElementById("stopProc").textContent = `${t("stop.proc")}: ${s.proc_name || s.app_name || svcName(s)} · PID ${s.pid}`;
+  const ports = (s.ports || []).join(", ");
+  const others = services.filter(x => x.pid === s.pid && x.id !== s.id);
+  document.getElementById("stopRel").textContent = t("stop.rel") + (ports || "—") + (others.length ? ` (+${others.length} ${t("count.services")})` : "");
+  document.getElementById("stopConfirm").textContent = t("stop.confirm");
+  document.getElementById("stopCancel").textContent = t("cancel");
+  document.getElementById("stopModal").classList.add("show");
+}
+async function confirmStop() {
+  const s = pendingStopPid;
+  document.getElementById("stopModal").classList.remove("show");
+  if (!s) return;
+  try {
+    const d = await api("/api/stop", { method: "POST", body: { pid: s.pid, name: s.proc_name, create_time: s.started_ts } });
+    if (d.ok) toast(t("stop.ok"));
+    else toast(t(STOP_ERRORS[d.error] || "stop.denied"), true);
+  } catch (e) { toast(t("offline"), true); }
+  pendingStopPid = null;
+  setTimeout(refreshData, 700);
+}
+async function reprobe(id) {
+  try {
+    await api("/api/reprobe", { method: "POST", body: { id: id } });
+    toast(t("act.reprobe") + "…");
+    setTimeout(refreshData, 1500);
+    setTimeout(refreshData, 4500);
+  } catch (e) { toast(t("offline"), true); }
+}
+function toast(msg, err) {
+  const el = document.getElementById("toast");
+  document.getElementById("toastMsg").textContent = msg;
+  el.classList.toggle("err", !!err);
+  el.classList.add("show");
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => el.classList.remove("show"), 2300);
+}
+
+/* ================= Global click routing ================= */
+document.addEventListener("click", e => {
+  const actBtn = e.target.closest("[data-act]");
+  if (actBtn) {
+    const act = actBtn.dataset.act, id = actBtn.dataset.id, s = byId(id);
+    if (!s && ["closedetail"].indexOf(act) < 0) return;
+    switch (act) {
+      case "open": {
+        const url = primaryWeb(s, true);
+        if (url) window.open(url, "_blank"); else toast(t("open.notweb"), true);
+        break; }
+      case "copyurl": doCopy(primaryWeb(s)); break;
+      case "copyip": doCopy((s.endpoints.find(ep => ep.ip !== "*" && ep.ip) || {}).ip); break;
+      case "copyport": doCopy(s.ports.join(", ")); break;
+      case "copypid": doCopy(s.pid); break;
+      case "copypath": doCopy(s.exe); break;
+      case "copycmd": doCopy(s.cmdline); break;
+      case "detail": openDetail(id); break;
+      case "closedetail": closeDetail(); break;
+      case "reprobe": reprobe(id); break;
+      case "stop": openStopModal(id); break;
+      case "viewhist": histFilter.q = s.proc_name || svcName(s); setPage("history"); break;
+      case "menu": {
+        document.querySelectorAll(".menu.show").forEach(m => { if (m.id !== "menu-" + id) m.classList.remove("show"); });
+        document.querySelectorAll(".svc-card.menu-open").forEach(c => c.classList.remove("menu-open"));
+        const m = document.getElementById("menu-" + id);
+        if (m) {
+          m.classList.toggle("show");
+          if (m.classList.contains("show")) m.closest(".svc-card").classList.add("menu-open");
+        }
+        break; }
+    }
+    return;
+  }
+  if (!e.target.closest(".menu")) document.querySelectorAll(".menu.show").forEach(m => m.classList.remove("show"));
+  if (!e.target.closest(".svc-card.menu-open")) document.querySelectorAll(".svc-card.menu-open").forEach(c => c.classList.remove("menu-open"));
+  const nav = e.target.closest("[data-nav]");
+  if (nav) { setPage(nav.dataset.nav); return; }
+  const viewBtn = e.target.closest("[data-view]");
+  if (viewBtn) { prefs.view = viewBtn.dataset.view; savePrefs(); renderCurrent(); return; }
+  const sortH = e.target.closest("[data-sort]");
+  if (sortH) {
+    const k = sortH.dataset.sort;
+    const map = { pid: null, port: "port", proto: null, scope: null, cpu: "cpu", mem: "mem", started: "started", name: "name" };
+    if (map[k] == null && k !== "name") { /* column not sortable */ }
+    else if (k === "name") { toggleSort("name"); }
+    else toggleSort(k);
+    return;
+  }
+  const row = e.target.closest("tr[data-id]");
+  if (row) { openDetail(row.dataset.id); return; }
+  const sw = e.target.closest(".switch[data-setting]");
+  if (sw && sw.dataset.setting === "show_confidence_local") {
+    prefs.show_confidence = !(prefs.show_confidence !== false); savePrefs();
+    sw.classList.toggle("on"); renderCurrent(); return;
+  }
+  if (sw && settingsCache) {
+    const k = sw.dataset.setting;
+    const nv = !settingsCache[k];
+    sw.classList.toggle("on", nv);
+    saveServerSettings({ [k]: nv });
+    return;
+  }
+  if (e.target.id === "scrim") { closeDetail(); return; }
+  if (e.target.id === "stopCancel") document.getElementById("stopModal").classList.remove("show");
+  if (e.target.id === "stopConfirm") confirmStop();
+  if (e.target.id === "histClear" || e.target.id === "setClearHist") {
+    document.getElementById("clearTitle").textContent = t("hist.clear");
+    document.getElementById("clearMsg").textContent = t("hist.clear.confirm");
+    document.getElementById("clearConfirm").textContent = t("hist.clear");
+    document.getElementById("clearCancel").textContent = t("cancel");
+    document.getElementById("clearModal").classList.add("show"); return;
+  }
+  if (e.target.id === "clearCancel") document.getElementById("clearModal").classList.remove("show");
+  if (e.target.id === "clearConfirm") {
+    document.getElementById("clearModal").classList.remove("show");
+    api("/api/history/clear", { method: "POST", body: {} }).then(() => { toast(t("copy.ok")); loadHistory(); }).catch(() => toast(t("offline"), true));
+    return; }
+  if (e.target.id === "btnRefresh") refreshData(true);
+});
+function toggleSort(k) {
+  if (prefs.sortKey === k) prefs.sortDir = -prefs.sortDir;
+  else { prefs.sortKey = k; prefs.sortDir = 1; }
+  savePrefs(); renderCurrent();
+}
+document.addEventListener("change", e => {
+  if (e.target.id === "tagFilter") { prefs.tagFilter = e.target.value; savePrefs(); renderCurrent(); }
+  if (e.target.id === "sortSel") { toggleSort(e.target.value === prefs.sortKey ? prefs.sortKey : e.target.value); }
+  if (e.target.id === "setLang") { prefs.lang = e.target.value; savePrefs(); applyLang(); }
+  if (e.target.id === "setTheme") { prefs.theme = e.target.value; savePrefs(); applyTheme(); }
+  if (e.target.id === "setView") { prefs.view = e.target.value; savePrefs(); renderCurrent(); }
+  if (e.target.id === "setRefresh") { prefs.refreshInterval = parseInt(e.target.value, 10); savePrefs(); applyRefresh(); }
+  if (e.target.id === "histDays") { histFilter.days = parseInt(e.target.value, 10) || 0; loadHistory(); }
+  if (e.target.id === "histType") { histFilter.type = e.target.value; loadHistory(); }
+  const numEl = e.target.closest("[data-setting-num]");
+  if (numEl) saveServerSettings({ [numEl.dataset.settingNum]: parseInt(numEl.value, 10) || 0 });
+  const strEl = e.target.closest("[data-setting-str]");
+  if (strEl) saveServerSettings({ [strEl.dataset.settingStr]: strEl.value });
+  const selEl = e.target.closest("[data-setting-sel]");
+  if (selEl) saveServerSettings({ [selEl.dataset.settingSel]: selEl.value });
+});
+document.addEventListener("input", e => {
+  if (e.target.id === "searchInput") { search = e.target.value; if (["dashboard", "internet", "lan", "local", "nonweb", "unknown"].indexOf(prefs.page) >= 0) renderCurrent(); }
+  if (e.target.id === "histQ") { histFilter.q = e.target.value; clearTimeout(window._hq); window._hq = setTimeout(renderHistoryPage, 250); }
+});
+
+/* ================= Render dispatch ================= */
+function renderCurrent() {
+  renderNav(); renderTopbar();
+  switch (prefs.page) {
+    case "dashboard": renderDashboard(); break;
+    case "internet": renderServicePage("internet-web"); break;
+    case "lan": renderServicePage("lan-web"); break;
+    case "local": renderServicePage("local-web"); break;
+    case "nonweb": renderServicePage("non-web"); break;
+    case "unknown": renderServicePage("unknown"); break;
+    case "history": renderHistoryPage(); break;
+    case "settings": renderSettingsPage(); break;
+  }
+  if (selectedId && document.getElementById("detail").classList.contains("show")) {
+    const s = byId(selectedId);
+    if (s && svcSig(s) !== detailSig) {
+      document.getElementById("detail").innerHTML = detailHTML(s);
+      detailSig = svcSig(s);
+    }
+  }
+}
+function renderAll() { renderCurrent(); }
+function markSelected() {
+  document.querySelectorAll(".svc-card,.tbl-wrap tr[data-id]").forEach(el =>
+    el.classList.toggle("selected", el.dataset.id === selectedId));
+}
+function renderTopbar() {
+  document.getElementById("pageTitle").textContent = t("page." + prefs.page);
+  document.getElementById("brandSub").textContent = t("sub.monitoring");
+  document.getElementById("deviceName").textContent = status ? status.device_name : "—";
+  document.getElementById("searchInput").placeholder = t("search.ph");
+  const dot = document.getElementById("scanDot"), txt = document.getElementById("scanText");
+  if (!online) { txt.textContent = t("offline").split("。")[0].split(".")[0]; dot.className = "dot off"; }
+  else if (status && status.scanning) { txt.textContent = t("scan.running"); dot.className = "dot scan"; }
+  else if (status && status.last_scan_ts) { txt.textContent = `${t("scan.last")} ${fmtClock(status.last_scan_ts)} (${status.last_scan_ms} ms)`; dot.className = "dot"; }
+  else { txt.textContent = t("scan.never"); dot.className = "dot"; }
+  document.getElementById("btnRefresh").setAttribute("data-tip", t("scan.last"));
+}
+
+/* ================= Theme / lang ================= */
+function applyTheme() {
+  document.documentElement.dataset.theme = prefs.theme;
+  document.getElementById("btnTheme").innerHTML = `<svg width="17" height="17"><use href="#${prefs.theme === "dark" ? "i-sun" : "i-moon"}"/></svg>`;
+  document.getElementById("btnTheme").dataset.tip = prefs.theme === "dark" ? t("set.theme.light") : t("set.theme.dark");
+}
+function applyLang() {
+  document.documentElement.lang = prefs.lang === "zh" ? "zh-CN" : "en";
+  detailSig = "";   // force detail panel rebuild with new tag labels
+  applyTheme(); renderAll();
+  if (prefs.page === "history") loadHistory();
+}
+document.getElementById("btnTheme").addEventListener("click", () => {
+  prefs.theme = prefs.theme === "dark" ? "light" : "dark"; savePrefs(); applyTheme();
+});
+document.getElementById("btnLang").addEventListener("click", () => {
+  prefs.lang = prefs.lang === "zh" ? "en" : "zh"; savePrefs(); applyLang();
+});
+document.getElementById("btnCollapse").addEventListener("click", () => {
+  prefs.navCollapsed = !prefs.navCollapsed; savePrefs();
+  document.getElementById("sidebar").classList.toggle("collapsed", prefs.navCollapsed);
+  renderNav();
+});
+
+/* ================= Scheduler ================= */
+function applyRefresh() {
+  clearInterval(refreshTimer);
+  if (prefs.refreshInterval > 0) refreshTimer = setInterval(() => refreshData(false), prefs.refreshInterval * 1000);
+}
+
+/* ================= Boot ================= */
+document.getElementById("sidebar").classList.toggle("collapsed", prefs.navCollapsed);
+applyTheme();
+if (CSRF === "") {
+  document.getElementById("content").innerHTML = `<div class="empty"><div class="eicon"><svg width="24" height="24"><use href="#i-warn"/></svg></div><div class="et">Local Service Monitor</div><div>Open via <code style="font-family:var(--mono)">http://127.0.0.1:8848/</code> started by server.py</div></div>`;
+} else {
+  applyRefresh();
+  refreshData(false);
+  // light periodic UI clock update even when data unchanged
+  setInterval(renderTopbar, 1000);
+}
+</script>
+</body>
+</html>
